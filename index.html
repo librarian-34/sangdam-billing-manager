@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>상담료 관리자</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link href="style.css" rel="stylesheet" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  </head>
+  <body>
+    <div class="no-file-overlay" id="noFileOverlay">
+      <div class="no-file-card">
+        <div class="no-file-icon">
+          <svg class="icon"><use href="icons.svg#icon-open" /></svg>
+        </div>
+        <div class="no-file-title">상담료 관리자</div>
+        <div class="no-file-desc">
+          데이터베이스 JSON 파일을 열거나<br />새로 만들어 시작하세요.
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-outlined btn-primary" id="btn-overlay-new">
+            <svg class="icon"><use href="icons.svg#icon-add" /></svg> 새로
+            시작하기
+          </button>
+          <button class="btn btn-filled btn-primary" id="btn-overlay-open">
+            <svg class="icon"><use href="icons.svg#icon-open" /></svg> 불러오기
+          </button>
+        </div>
+        <div
+          style="
+            margin-top: 16px;
+            font-size: 12px;
+            color: var(--on-surface-hint);
+          "
+        >
+          파일은 내컴퓨터에 저장되며 외부로 전송되지 않습니다.
+        </div>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <header>
+      <div class="header-left">
+        <div class="header-title">상담료 관리자</div>
+        <div class="header-date" id="headerDate"></div>
+      </div>
+      <div class="file-controls">
+        <span class="file-name" id="fileNameLabel">변경사항 없음</span>
+        <button class="btn btn-outlined btn-sm" id="btn-header-open">
+          <svg class="icon"><use href="icons.svg#icon-open" /></svg> 열기
+        </button>
+        <button class="btn btn-filled btn-primary btn-sm" id="btn-header-save">
+          <svg class="icon"><use href="icons.svg#icon-save" /></svg> 저장
+        </button>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab" data-tab="data">내담자 관리</div>
+      <div class="tab active" data-tab="month">월별 정산</div>
+      <div class="tab" data-tab="payment">입금 이력</div>
+      <div class="tab" data-tab="history">인쇄 이력</div>
+    </div>
+
+    <!-- Main content -->
+    <div class="content">
+      <!-- ── 이번 달 ── -->
+      <div class="panel active" id="panel-month">
+        <div
+          class="section-header"
+          id="month-section-header"
+          style="display: none"
+        >
+          <div class="month-title-nav">
+            <button
+              class="btn btn-outlined btn-sm month-nav-btn"
+              id="btn-month-prev"
+              aria-label="이전 달"
+            >
+              <svg class="icon"><use href="icons.svg#icon-chevron-left" /></svg>
+            </button>
+            <div class="section-title month-period-label" id="monthTitle"></div>
+            <button
+              class="btn btn-outlined btn-sm month-nav-btn"
+              id="btn-month-next"
+              aria-label="다음 달"
+            >
+              <svg class="icon">
+                <use href="icons.svg#icon-chevron-right" />
+              </svg>
+            </button>
+          </div>
+          <div></div>
+        </div>
+
+        <div class="info-box" id="calendar-info">
+          <p>Google 계정을 연결하여 이번 달 스케줄을 확인해 보세요.</p>
+          <p
+            style="font: var(--typo-title-md); color: var(--on-surface-variant)"
+          >
+            일정 제목이 내담자 이름으로 활용됩니다.
+          </p>
+          <button
+            class="btn btn-outlined btn-lg"
+            id="btn-auth"
+            style="margin-top: 36px; border-radius: 9999px"
+          >
+            <img height="24" src="/public/google_calendar.png" />
+            Google 캘린더 연동
+          </button>
+        </div>
+
+        <!-- 캘린더 선택 영역 -->
+        <div id="calendar-selector" style="display: none"></div>
+
+        <!-- 2-column 데이터 영역 -->
+        <div id="month-data-section" style="display: none">
+          <div class="month-grid">
+            <!-- 좌열: 캘린더 -->
+            <div class="month-col-calendar">
+              <div class="calendar-top-actions">
+                <button
+                  class="btn btn-outlined btn-primary btn-sm"
+                  id="btn-refresh"
+                  style="display: none"
+                >
+                  <svg class="icon"><use href="icons.svg#icon-refresh" /></svg>
+                  새로고침
+                </button>
+                <div class="calendar-actions-menu" id="calendarActionsMenu">
+                  <button
+                    class="btn btn-sm btn-icon"
+                    id="btn-calendar-menu"
+                    style="display: none"
+                    aria-label="캘린더 메뉴"
+                    aria-expanded="false"
+                  >
+                    <svg class="icon">
+                      <use href="icons.svg#icon-ellipsis-vertical" />
+                    </svg>
+                  </button>
+                  <div
+                    class="calendar-actions-dropdown"
+                    id="calendarActionsDropdown"
+                  >
+                    <button
+                      class="calendar-menu-item"
+                      id="btn-add-event"
+                      style="display: none"
+                    >
+                      <svg class="icon"><use href="icons.svg#icon-add" /></svg>
+                      일정 추가
+                    </button>
+                    <button
+                      class="calendar-menu-item"
+                      id="btn-change-cal"
+                      style="display: none"
+                    >
+                      <svg class="icon">
+                        <use href="icons.svg#icon-calendar" />
+                      </svg>
+                      캘린더 변경
+                    </button>
+                    <button
+                      class="calendar-menu-item"
+                      id="btn-signout"
+                      style="display: none"
+                    >
+                      <svg class="icon">
+                        <use href="icons.svg#icon-logout" />
+                      </svg>
+                      로그아웃
+                    </button>
+                  </div>
+                </div>
+              </div>
+                  <button
+                id="btn-invalid-status-summary"
+                class="unmatched-summary-btn invalid-status-summary-btn"
+                style="display: none; margin-bottom: 8px"
+              >
+                <svg class="icon"><use href="icons.svg#icon-alert" /></svg>
+                상태 형식이 잘못된 항목
+                <strong id="invalidStatusCount">0</strong>건 발견됐습니다
+                <svg class="icon icon-summary-trailing">
+                  <use href="icons.svg#icon-chevron-right" />
+                </svg>
+              </button>
+              <button
+                id="btn-unmatched-summary"
+                class="unmatched-summary-btn"
+                style="display: none; margin-bottom: 36px"
+              >
+                <svg class="icon"><use href="icons.svg#icon-alert" /></svg>
+                연동되지 않은 항목
+                <strong id="unmatchedCount">0</strong>건 발견됐습니다
+                <svg class="icon icon-summary-trailing">
+                  <use href="icons.svg#icon-chevron-right" />
+                </svg>
+              </button>
+          
+
+              <div class="calendar-weekdays">
+                <div>일</div>
+                <div>월</div>
+                <div>화</div>
+                <div>수</div>
+                <div>목</div>
+                <div>금</div>
+                <div>토</div>
+              </div>
+              <div class="calendar" id="calendarGrid"></div>
+            </div>
+
+            <!-- 우열: 청구 대상 -->
+            <div class="month-col-billing">
+              <div class="billing-col-header">
+                <div class="section-title" style="font-size: 16px">
+                  연동된 청구 대상
+                  <span class="matched-count-badge" id="matchedCount">0</span>건
+                  <small
+                    style="
+                      margin-left: 8px;
+                      color: var(--on-surface-variant);
+                      font: var(--typo-body-sm);
+                    "
+                  >
+                    선택 <strong id="selectedCountHeader">0</strong>명
+                  </small>
+                </div>
+                <div style="display: flex; gap: 6px">
+                  <button
+                    class="btn btn-outlined btn-primary btn-sm"
+                    id="btn-select-all-cal"
+                  >
+                    전체 선택
+                  </button>
+                  <button
+                    class="btn btn-outlined btn-primary btn-sm"
+                    id="btn-deselect-all-cal"
+                  >
+                    전체 해제
+                  </button>
+                </div>
+              </div>
+              <div class="people-grid people-grid-col" id="peopleList"></div>
+              <div class="print-bar">
+                <div class="print-warning" id="printWarningMessage">
+                  인쇄 안내
+                </div>
+                <button
+                  class="btn btn-md btn-filled btn-primary"
+                  id="btn-print-invoices"
+                >
+                  <svg class="icon"><use href="icons.svg#icon-print" /></svg>
+                  청구서 발행하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /month-data-section -->
+      </div>
+      <!-- /panel-month -->
+
+      <!-- ── 내담자 관리 ── -->
+      <div class="panel" id="panel-data">
+        <!-- Add person form -->
+        <div class="add-form">
+          <div class="form-label-row">내담자 검색 / 등록</div>
+          <div class="form-row">
+            <div class="form-group flex1">
+              <input
+                class="form-input"
+                id="personSearch"
+                placeholder="이름으로 검색"
+              />
+            </div>
+            <div style="padding-bottom: 1px">
+              <button class="btn btn-filled btn-primary" id="btn-add-person">
+                <svg class="icon"><use href="icons.svg#icon-add" /></svg>
+                내담자 등록
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- People table -->
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>이름</th>
+              <th>1회 상담가격</th>
+              <th>올해 방문수</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody id="dataTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- ── 입금 이력 ── -->
+      <div class="panel" id="panel-payment">
+        <div class="section-header">
+          <div class="month-title-nav">
+            <button
+              class="btn btn-outlined btn-sm month-nav-btn"
+              id="btn-payment-prev"
+              aria-label="이전 달"
+            >
+              <svg class="icon"><use href="icons.svg#icon-chevron-left" /></svg>
+            </button>
+            <div
+              class="section-title month-period-label"
+              id="paymentMonthLabel"
+            ></div>
+            <button
+              class="btn btn-outlined btn-sm month-nav-btn"
+              id="btn-payment-next"
+              aria-label="다음 달"
+            >
+              <svg class="icon">
+                <use href="icons.svg#icon-chevron-right" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="section-description">
+        [월별정산] 탭에서 인쇄를 실행하는 시점의 데이터가 최종 확정값으로 반영됩니다.
+         <br/>
+이후 다시 인쇄할 경우, 최신 인쇄 내용 기준으로 입금 이력이 갱신됩니다.
+         </div>
+        <div id="paymentContent"></div>
+      </div>
+
+      <!-- ── 인쇄 이력 ── -->
+      <div class="panel" id="panel-history">
+        <div class="section-header">
+          <div class="month-title-nav">
+            <button
+              class="btn btn-outlined btn-sm month-nav-btn"
+              id="btn-history-prev"
+              aria-label="이전 달"
+            >
+              <svg class="icon"><use href="icons.svg#icon-chevron-left" /></svg>
+            </button>
+            <div
+              class="section-title month-period-label"
+              id="historyMonthLabel"
+            ></div>
+            <button
+              class="btn btn-outlined btn-sm month-nav-btn"
+              id="btn-history-next"
+              aria-label="다음 달"
+            >
+              <svg class="icon">
+                <use href="icons.svg#icon-chevron-right" />
+              </svg>
+            </button>
+          </div>
+        </div>
+             <div class="section-description">
+지금까지 인쇄를 시도한 내역을 확인할 수 있습니다.
+         </div>
+
+          <div id="historyContent"></div>
+      </div>
+    </div>
+    <!-- /content -->
+
+    <!-- Modal: CSV 중복 -->
+    <div class="modal-overlay" id="csvModal">
+      <div class="modal">
+        <div class="modal-header-row">
+          <div class="modal-title">
+            <svg class="icon"><use href="icons.svg#icon-alert" /></svg> 중복된
+            이름 발견
+          </div>
+          <button class="btn-icon-close" id="btn-close-csv" aria-label="닫기">
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-desc">
+          아래 항목이 이미 존재합니다. 어떻게 처리할까요?
+        </div>
+        <div class="modal-body">
+          <div class="dup-list" id="dupList"></div>
+          <div
+            style="
+              font-size: 13px;
+              color: var(--on-surface-variant);
+              line-height: 1.6;
+            "
+          >
+            <strong>업데이트</strong>: 기존 데이터를 새 값으로 교체<br />
+            <strong>새것만 추가</strong>: 중복은 건너뛰고 새 항목만 추가
+          </div>
+        </div>
+        <div class="modal-actions modal-actions-equal">
+          <button class="btn btn-tonal btn-primary" id="btn-import-skip">
+            새것만 추가
+          </button>
+          <button class="btn btn-filled btn-primary" id="btn-import-update">
+            업데이트
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: 수정 -->
+    <div class="modal-overlay" id="editModal">
+      <div class="modal">
+        <div class="modal-header-row">
+          <div class="modal-title" id="editModalTitle">내담자 정보 수정</div>
+          <button class="btn-icon-close" id="btn-close-edit" aria-label="닫기">
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row" style="flex-direction: column; gap: 12px">
+            <div class="form-group">
+              <label class="form-label">이름</label>
+              <input class="form-input" id="editName" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">1회 상담 가격 (원)</label>
+              <input class="form-input" id="editPrice" type="number" />
+            </div>
+            <div
+              class="form-group"
+              id="editActiveRow"
+              style="margin-bottom: 24px"
+            >
+              <label class="form-label">활성 상태</label>
+              <select class="form-input" id="editActive">
+                <option value="true">활성</option>
+                <option value="false">비활성</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions modal-actions-equal">
+          <button class="btn btn-filled btn-primary btn-lg" id="btn-save-edit">
+            저장
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: 연동되지 않은 항목 -->
+    <div class="modal-overlay" id="unmatchedListModal">
+      <div class="modal" style="max-width: 480px">
+        <div class="modal-header-row">
+          <div class="modal-title">
+            <svg class="icon"><use href="icons.svg#icon-alert" /></svg> 연동되지
+            않은 항목
+          </div>
+          <button
+            class="btn-icon-close"
+            id="btn-close-unmatched-modal"
+            aria-label="닫기"
+          >
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-desc">
+          DB에 등록되지 않은 캘린더 이름입니다.<br />
+          추가하거나 기존 인원과 매칭하세요.
+        </div>
+        <div class="modal-body" id="unmatchedModalList"></div>
+      </div>
+    </div>
+
+    <!-- Modal: 상태 형식 오류 항목 -->
+    <div class="modal-overlay" id="invalidStatusListModal">
+      <div class="modal" style="max-width: 520px">
+        <div class="modal-header-row">
+          <div class="modal-title">
+            <svg class="icon"><use href="icons.svg#icon-alert" /></svg> 상태
+            형식 오류 항목
+          </div>
+          <button
+            class="btn-icon-close"
+            id="btn-close-invalid-status-modal"
+            aria-label="닫기"
+          >
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-desc">
+          괄호 안 상태가 올바르지 않은 일정입니다.<br />
+          상태를 선택해 일괄 수정하세요.
+        </div>
+        <div class="modal-body" id="invalidStatusModalList"></div>
+      </div>
+    </div>
+
+    <!-- Modal: 상태 형식 오류 수정 -->
+    <div class="modal-overlay" id="fixInvalidStatusModal">
+      <div class="modal">
+        <div class="modal-header-row">
+          <div class="modal-title">상태 수정</div>
+          <button
+            class="btn-icon-close"
+            id="btn-close-fix-invalid-status"
+            aria-label="닫기"
+          >
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-desc">
+          <strong id="fixInvalidStatusName"></strong> 일정의 상태를 선택하세요.
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">상태</label>
+            <select class="form-input" id="fixInvalidStatusSelect">
+              <option value="">방문</option>
+              <option value="노쇼">노쇼</option>
+              <option value="당일취소">당일취소</option>
+              <option value="사전취소">사전취소</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions modal-actions-equal">
+          <button
+            class="btn btn-filled btn-primary"
+            id="btn-save-fix-invalid-status"
+          >
+            상태 수정
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Print area -->
+    <div id="print-area"></div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Modal: 캘린더 일정 추가 -->
+    <div class="modal-overlay" id="calendarEventModal">
+      <div class="modal">
+        <div class="modal-header-row">
+          <div class="modal-title" id="calendarEventModalTitle">
+            <svg class="icon"><use href="icons.svg#icon-calendar" /></svg>
+            캘린더 일정 추가
+          </div>
+          <button
+            class="btn-icon-close"
+            id="btn-close-cal-event"
+            aria-label="닫기"
+          >
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row" style="flex-direction: column; gap: 12px">
+            <div class="form-group">
+              <label class="form-label">내담자 이름</label>
+              <input
+                class="form-input"
+                id="calEventName"
+                placeholder="홍길동"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">상태</label>
+              <select class="form-input" id="calEventStatus">
+                <option value="">방문</option>
+                <option value="노쇼">노쇼</option>
+                <option value="당일취소">당일취소</option>
+                <option value="사전취소">사전취소</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">날짜</label>
+              <input class="form-input" id="calEventDate" type="date" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">시작 시간 (1시간 단위로 등록)</label>
+              <input
+                class="form-input"
+                id="calEventTime"
+                type="time"
+                value="10:00"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions modal-actions-equal">
+          <button class="btn btn-filled btn-primary" id="btn-save-cal-event">
+            추가
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: DB 미등록 이름 → 신규 추가 -->
+    <div class="modal-overlay" id="addUnmatchedModal">
+      <div class="modal">
+        <div class="modal-header-row">
+          <div class="modal-title">
+            <svg class="icon"><use href="icons.svg#icon-user" /></svg> 신규 인원
+            DB 추가
+          </div>
+          <button
+            class="btn-icon-close"
+            id="btn-close-add-unmatched"
+            aria-label="닫기"
+          >
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-desc">
+          캘린더에서 발견된 미등록 이름입니다.<br />
+          가격을 입력하면 DB에 등록되고 청구 대상에 포함됩니다.
+        </div>
+        <div class="modal-body">
+          <div
+            style="
+              background: var(--bg-surface);
+              border-radius: 4px;
+              padding: 10px 14px;
+              margin-bottom: 14px;
+              font-size: 14px;
+            "
+          >
+            <strong id="addUnmatchedName"></strong>
+            <span
+              style="
+                color: var(--on-surface-variant);
+                font-size: 12px;
+                margin-left: 8px;
+              "
+              id="addUnmatchedCount"
+            ></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">1회 상담 가격 (원)</label>
+            <input
+              class="form-input"
+              id="addUnmatchedPrice"
+              type="number"
+              placeholder="50000"
+            />
+          </div>
+        </div>
+        <div class="modal-actions modal-actions-equal">
+          <button
+            class="btn btn-filled btn-primary"
+            id="btn-save-add-unmatched"
+          >
+            DB에 추가
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: DB 미등록 이름 → 기존 인원과 매칭 -->
+    <div class="modal-overlay" id="matchModal">
+      <div class="modal">
+        <div class="modal-header-row">
+          <div class="modal-title">기존 인원과 매칭</div>
+          <button class="btn-icon-close" id="btn-close-match" aria-label="닫기">
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-desc">
+          캘린더의 "<strong id="matchCalName"></strong>" 이름을 가진 이벤트를<br />
+          선택한 DB 인원의 이름으로 일괄 변경합니다.
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">DB 인원 선택</label>
+            <select class="form-input" id="matchDbSelect"></select>
+          </div>
+        </div>
+        <div class="modal-actions modal-actions-equal">
+          <button class="btn btn-filled btn-primary" id="btn-save-match">
+            이름 변경 및 매칭
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: 내담자 상세 -->
+    <div class="modal-overlay" id="personDetailModal">
+      <div class="modal modal-detail">
+        <div class="modal-header-row">
+          <div style="display: inline-flex; align-items: center">
+            <div class="detail-name modal-title"></div>
+            <button
+              class="btn btn-icon btn-primary"
+              id="btn-edit-from-detail"
+              aria-label="수정"
+            >
+              <svg class="icon"><use href="icons.svg#icon-edit" /></svg>
+            </button>
+          </div>
+
+          <button
+            class="btn-icon-close"
+            id="btn-close-person-detail"
+            aria-label="닫기"
+          >
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="detail-body modal-body"></div>
+        <div class="modal-actions modal-actions-equal">
+          <button
+            class="btn btn-outlined btn-error"
+            id="btn-delete-from-detail"
+          >
+            <svg class="icon"><use href="icons.svg#icon-delete" /></svg>
+            내담자 삭제
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts (load order matters: constants → store → utils → api → render → app) -->
+    <script src="constants.js"></script>
+    <script src="store.js"></script>
+    <script src="utils.js"></script>
+    <script src="modal.js"></script>
+    <script src="api.js"></script>
+    <script src="render.js"></script>
+    <script src="app.js"></script>
+
+    <!-- Google API Scripts -->
+    <script
+      async
+      defer
+      src="https://apis.google.com/js/api.js"
+      onload="gapiLoaded()"
+    ></script>
+    <script
+      async
+      defer
+      src="https://accounts.google.com/gsi/client"
+      onload="gisLoaded()"
+    ></script>
+  </body>
+</html>

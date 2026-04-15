@@ -1,0 +1,230 @@
+{
+  "data": [
+    {
+      "id": "p_1773192174335_vpp6ow3rbwr",
+      "name": "김말차",
+      "active": true,
+      "currentPrice": 50000,
+      "price": 50000,
+      "monthlyData": {
+        "202603": {
+          "visitCount": 0,
+          "noShowCount": 0,
+          "sameDayCancelCount": 0,
+          "advanceCancelCount": 0,
+          "price": 50000,
+          "totalPrice": 0,
+          "lastVisitDate": null
+        }
+      }
+    },
+    {
+      "id": "p_1773569224586_nf59ifjjxgf",
+      "name": "김호지",
+      "active": true,
+      "currentPrice": 3000,
+      "price": 3000,
+      "monthlyData": {
+        "202603": {
+          "visitCount": 0,
+          "noShowCount": 0,
+          "sameDayCancelCount": 0,
+          "advanceCancelCount": 0,
+          "price": 3000,
+          "totalPrice": 0,
+          "lastVisitDate": null
+        }
+      }
+    },
+    {
+      "id": "p_1774355776260_uqzaxpit9g",
+      "name": "곽동환",
+      "active": true,
+      "currentPrice": 130000,
+      "price": 130000,
+      "monthlyData": {
+        "202603": {
+          "visitCount": 5,
+          "noShowCount": 0,
+          "sameDayCancelCount": 0,
+          "advanceCancelCount": 0,
+          "price": 130000,
+          "totalPrice": 650000,
+          "lastVisitDate": "2026-03-30T04:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "p_1774355793535_1wb16h1p0gr",
+      "name": "김중연",
+      "active": true,
+      "currentPrice": 150000,
+      "price": 150000,
+      "monthlyData": {
+        "202603": {
+          "visitCount": 5,
+          "noShowCount": 0,
+          "sameDayCancelCount": 0,
+          "advanceCancelCount": 0,
+          "price": 150000,
+          "totalPrice": 750000,
+          "lastVisitDate": "2026-03-30T10:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "p_1774355803643_n4lixpe6ehm",
+      "name": "이가연",
+      "active": true,
+      "currentPrice": 120000,
+      "price": 120000,
+      "monthlyData": {
+        "202603": {
+          "visitCount": 4,
+          "noShowCount": 0,
+          "sameDayCancelCount": 0,
+          "advanceCancelCount": 0,
+          "price": 120000,
+          "totalPrice": 480000,
+          "lastVisitDate": "2026-03-25T11:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "p_1774356048570_si0lv48tejq",
+      "name": "서하윤",
+      "active": true,
+      "currentPrice": 50000,
+      "price": 50000,
+      "monthlyData": {
+        "202603": {
+          "visitCount": 4,
+          "noShowCount": 0,
+          "sameDayCancelCount": 0,
+          "advanceCancelCount": 0,
+          "price": 50000,
+          "totalPrice": 200000,
+          "lastVisitDate": "2026-03-25T09:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "p_1774356103236_4e1f3smxsme",
+      "name": "김지애",
+      "active": true,
+      "currentPrice": 120000,
+      "price": 120000,
+      "monthlyData": {
+        "202603": {
+          "visitCount": 3,
+          "noShowCount": 1,
+          "sameDayCancelCount": 0,
+          "advanceCancelCount": 1,
+          "price": 120000,
+          "totalPrice": 360000,
+          "lastVisitDate": "2026-03-27T10:00:00.000Z"
+        }
+      }
+    }
+  ],
+  "printHistory": [
+    {
+      "id": "hist_1774355981869",
+      "year": 2026,
+      "month": 3,
+      "printedAt": "2026-03-24T12:39:41.869Z",
+      "entries": [
+        {
+          "name": "곽동환",
+          "price": 130000,
+          "count": 5,
+          "total": 650000
+        },
+        {
+          "name": "김중연",
+          "price": 150000,
+          "count": 5,
+          "total": 750000
+        },
+        {
+          "name": "이가연",
+          "price": 120000,
+          "count": 4,
+          "total": 480000
+        }
+      ]
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay_2026_3",
+      "year": 2026,
+      "month": 3,
+      "entries": [
+        {
+          "personId": "p_1773192174335_vpp6ow3rbwr",
+          "name": "김말차",
+          "price": 50000,
+          "count": 2,
+          "lastDate": "2026-03-17T20:30:00.000Z",
+          "total": 100000,
+          "paidAt": "2026-04-10"
+        },
+        {
+          "personId": "p_1773569224586_nf59ifjjxgf",
+          "name": "김호지",
+          "price": 3000,
+          "count": 1,
+          "lastDate": "2026-03-01T01:00:00.000Z",
+          "total": 3000,
+          "paidAt": "2026-03-24"
+        },
+        {
+          "personId": "p_1774355776260_uqzaxpit9g",
+          "name": "곽동환",
+          "price": 130000,
+          "count": 5,
+          "lastDate": "2026-03-30T04:00:00.000Z",
+          "total": 650000,
+          "paidAt": "2026-03-24"
+        },
+        {
+          "personId": "p_1774355793535_1wb16h1p0gr",
+          "name": "김중연",
+          "price": 150000,
+          "count": 5,
+          "lastDate": "2026-03-30T10:00:00.000Z",
+          "total": 750000,
+          "paidAt": null
+        },
+        {
+          "personId": "p_1774355803643_n4lixpe6ehm",
+          "name": "이가연",
+          "price": 120000,
+          "count": 4,
+          "lastDate": "2026-03-25T11:00:00.000Z",
+          "total": 480000,
+          "paidAt": null
+        },
+        {
+          "personId": "p_1774356048570_si0lv48tejq",
+          "name": "서하윤",
+          "price": 50000,
+          "count": 4,
+          "lastDate": "2026-03-25T09:00:00.000Z",
+          "total": 200000,
+          "paidAt": null
+        },
+        {
+          "personId": "p_1774356103236_4e1f3smxsme",
+          "name": "김지애",
+          "price": 120000,
+          "count": 3,
+          "lastDate": "2026-03-27T10:00:00.000Z",
+          "total": 360000,
+          "paidAt": null
+        }
+      ]
+    }
+  ]
+}
