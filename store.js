@@ -32,10 +32,6 @@ let paymentViewMonth = MONTH;
 let monthViewYear = YEAR;
 let monthViewMonth = MONTH;
 
-// Print history tab view navigation
-let historyViewYear = YEAR;
-let historyViewMonth = MONTH;
-
 // ════════════════════════════
 //  Persistence
 // ════════════════════════════

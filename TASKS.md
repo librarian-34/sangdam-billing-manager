@@ -1,6 +1,6 @@
 # 상담 청구서 관리 시스템 - 개선 작업 체크리스트
 
-npx live-server --port=3000 --host=localhost
+npx live-server --port=3000 --host=localhost --ignore="*.json"
 
 ## 1. DB 불러오기 구조 개선
 

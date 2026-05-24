@@ -98,6 +98,15 @@ function updatePrintButtonState() {
       warningEl.classList.remove("warning");
     }
   }
+
+  const previewModal = document.getElementById("invoicePreviewModal");
+  if (
+    previewModal &&
+    previewModal.classList.contains("show") &&
+    typeof renderInvoicePreview === "function"
+  ) {
+    renderInvoicePreview("invoicePreviewModalArea");
+  }
 }
 /* ── 데이터 테이블 ── */
 function renderDataTable() {
@@ -544,22 +553,17 @@ function renderPaymentHistory(year, month) {
 }
 
 /* ── 인쇄 이력 ── */
-function renderHistory(year = historyViewYear, month = historyViewMonth) {
-  const monthLabel = document.getElementById("historyMonthLabel");
-  if (monthLabel) monthLabel.textContent = `${year}년 ${month}월`;
-  const nextBtn = document.getElementById("btn-history-next");
-  if (nextBtn) nextBtn.disabled = year === YEAR && month === MONTH;
-
+function renderHistory() {
   const container = document.getElementById("historyContent");
-  const records = db.printHistory
-    .filter((h) => h.year === year && h.month === month)
-    .sort((a, b) => new Date(b.printedAt) - new Date(a.printedAt));
+  const records = [...db.printHistory].sort(
+    (a, b) => new Date(b.printedAt) - new Date(a.printedAt),
+  );
 
   if (records.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon"><svg class="icon"><use href="icons.svg#icon-calendar"/></svg></div>
-        ${year}년 ${month}월 인쇄 이력이 없습니다.
+        인쇄 이력이 없습니다.
       </div>`;
     return;
   }
@@ -583,7 +587,9 @@ function renderHistory(year = historyViewYear, month = historyViewMonth) {
           <span class="history-meta">
             ${printedTime} 출력 &nbsp;·&nbsp; ${h.entries.length}명 &nbsp;·&nbsp; 합계 ${total.toLocaleString()}원
           </span>
-          <button class="btn btn-outlined btn-error btn-sm" style="margin-left:auto;"
+          <button class="btn btn-outlined btn-primary btn-sm" style="margin-left:auto;"
+            data-action="reissue-history" data-id="${h.id}"><svg class="icon"><use href="icons.svg#icon-print"/></svg> 재발행</button>
+          <button class="btn btn-outlined btn-error btn-sm"
             data-action="delete-history" data-id="${h.id}"><svg class="icon"><use href="icons.svg#icon-delete"/></svg> 삭제</button>
         </div>
         <table class="data-table">

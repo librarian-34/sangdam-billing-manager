@@ -13,13 +13,15 @@ let unmatchedListModalComp = null;
 let invalidStatusListModalComp = null;
 let fixInvalidStatusModalComp = null;
 let personDetailModalComp = null;
+let invoicePreviewModalComp = null;
 
 document.addEventListener("DOMContentLoaded", () => {
-  const _weekday = ["일", "월", "화", "수", "목", "금", "토"][new Date(YEAR, MONTH - 1, DAY).getDay()];
+  const _weekday = ["일", "월", "화", "수", "목", "금", "토"][
+    new Date(YEAR, MONTH - 1, DAY).getDay()
+  ];
   document.getElementById("headerDate").textContent =
     `${YEAR}년 ${MONTH}월 ${DAY}일 (${_weekday})`;
   updateMonthHeader();
-  updateHistoryHeader();
 
   // ── Static buttons ──
   document
@@ -46,24 +48,18 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("btn-month-next")
     .addEventListener("click", nextMonthView);
-  document
-    .getElementById("btn-add-event")
-    .addEventListener("click", () => {
-      closeCalendarActionsMenu();
-      openCalendarEventModal();
-    });
-  document
-    .getElementById("btn-change-cal")
-    .addEventListener("click", () => {
-      closeCalendarActionsMenu();
-      showCalendarSelector();
-    });
-  document
-    .getElementById("btn-signout")
-    .addEventListener("click", () => {
-      closeCalendarActionsMenu();
-      handleSignoutClick();
-    });
+  document.getElementById("btn-add-event").addEventListener("click", () => {
+    closeCalendarActionsMenu();
+    openCalendarEventModal();
+  });
+  document.getElementById("btn-change-cal").addEventListener("click", () => {
+    closeCalendarActionsMenu();
+    showCalendarSelector();
+  });
+  document.getElementById("btn-signout").addEventListener("click", () => {
+    closeCalendarActionsMenu();
+    handleSignoutClick();
+  });
   document
     .getElementById("btn-calendar-menu")
     .addEventListener("click", (e) => {
@@ -76,6 +72,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("btn-deselect-all-cal")
     .addEventListener("click", deselectAllCalendar);
+  document
+    .getElementById("btn-preview-invoices")
+    .addEventListener("click", openInvoicePreviewModal);
   document
     .getElementById("btn-print-invoices")
     .addEventListener("click", printInvoices);
@@ -120,12 +119,6 @@ document.addEventListener("DOMContentLoaded", () => {
     .getElementById("btn-payment-next")
     .addEventListener("click", nextPaymentMonth);
   document
-    .getElementById("btn-history-prev")
-    .addEventListener("click", prevHistoryMonth);
-  document
-    .getElementById("btn-history-next")
-    .addEventListener("click", nextHistoryMonth);
-  document
     .getElementById("btn-unmatched-summary")
     .addEventListener("click", openUnmatchedModal);
   document
@@ -137,6 +130,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("btn-close-invalid-status-modal")
     .addEventListener("click", closeInvalidStatusModal);
+  document
+    .getElementById("btn-close-invoice-preview")
+    .addEventListener("click", closeInvoicePreviewModal);
   document
     .getElementById("btn-close-fix-invalid-status")
     .addEventListener("click", closeFixInvalidStatusModal);
@@ -256,6 +252,7 @@ document.addEventListener("DOMContentLoaded", () => {
       fixingInvalidStatusIdx = -1;
     },
   });
+  initModal({ id: "invoicePreviewModal" });
   editModalComp = createModalComponent({
     id: "editModal",
     selectors: { title: "#editModalTitle" },
@@ -271,11 +268,14 @@ document.addEventListener("DOMContentLoaded", () => {
   invalidStatusListModalComp = createModalComponent({
     id: "invalidStatusListModal",
   });
-  fixInvalidStatusModalComp = createModalComponent({ id: "fixInvalidStatusModal" });
+  fixInvalidStatusModalComp = createModalComponent({
+    id: "fixInvalidStatusModal",
+  });
   personDetailModalComp = createModalComponent({
     id: "personDetailModal",
     selectors: { title: ".detail-name", body: ".detail-body" },
   });
+  invoicePreviewModalComp = createModalComponent({ id: "invoicePreviewModal" });
 
   // ── Event delegation: dataTableBody ──
   const dataTableBody = document.getElementById("dataTableBody");
@@ -327,9 +327,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── Event delegation: historyContent ──
   document.getElementById("historyContent").addEventListener("click", (e) => {
-    const el = e.target.closest('[data-action="delete-history"]');
-    if (!el) return;
-    deleteHistory(el.dataset.id);
+    const del = e.target.closest('[data-action="delete-history"]');
+    if (del) { deleteHistory(del.dataset.id); return; }
+    const reissue = e.target.closest('[data-action="reissue-history"]');
+    if (reissue) reissueHistory(reissue.dataset.id);
   });
 
   // ── Event delegation: paymentContent ──
@@ -467,7 +468,7 @@ function switchTab(name) {
     .querySelectorAll(".panel")
     .forEach((p) => p.classList.remove("active"));
   document.getElementById("panel-" + name).classList.add("active");
-  if (name === "history") renderHistory(historyViewYear, historyViewMonth);
+  if (name === "history") renderHistory();
   if (name === "payment")
     renderPaymentHistory(paymentViewYear, paymentViewMonth);
 }
@@ -552,7 +553,8 @@ function snapshotCurrentMonthPrice(person, price) {
   const monthKey = getMonthKey(YEAR, MONTH);
   const entry = normalizeMonthlyEntry(person.monthlyData[monthKey], +price);
   entry.price = +price;
-  entry.totalPrice = entry.price * (Number.isFinite(+entry.visitCount) ? +entry.visitCount : 0);
+  entry.totalPrice =
+    entry.price * (Number.isFinite(+entry.visitCount) ? +entry.visitCount : 0);
   person.monthlyData[monthKey] = entry;
 }
 
@@ -570,14 +572,17 @@ function openEditModal(id) {
   editingId = id;
   const isNew = !id;
   editModalComp.setTitle(isNew ? "내담자 등록" : "정보 수정");
-  document.getElementById("btn-save-edit").textContent = isNew ? "등록" : "저장";
+  document.getElementById("btn-save-edit").textContent = isNew
+    ? "등록"
+    : "저장";
 
   if (!isNew) {
     const p = db.data.find((x) => x.id === id);
     if (!p) return;
     document.getElementById("editName").value = p.name;
     document.getElementById("editPrice").value = p.currentPrice ?? p.price ?? 0;
-    document.getElementById("editActive").value = p.active !== false ? "true" : "false";
+    document.getElementById("editActive").value =
+      p.active !== false ? "true" : "false";
   } else {
     document.getElementById("editName").value = "";
     document.getElementById("editPrice").value = "";
@@ -654,7 +659,12 @@ function toggleActive(id, active) {
 function deletePerson(id) {
   const target = db.data.find((p) => p.id === id);
   if (!target) return;
-  if (!confirm(`"${target.name}"을(를) 데이터베이스에서 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`)) return;
+  if (
+    !confirm(
+      `"${target.name}"을(를) 데이터베이스에서 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`,
+    )
+  )
+    return;
   db.data = db.data.filter((p) => p.id !== id);
   db.payments = (db.payments || [])
     .map((record) => ({
@@ -899,13 +909,15 @@ function renderInvoices(entries) {
         </div>
         <div class="invoice-title">상담료청구서</div>
         <div class="invoice-recipient">
-          <span class="invoice-recipient-name">${escapeHtml(p.name)}</span> 귀하
+          <span class="invoice-recipient-group">
+            <span class="invoice-recipient-name">${escapeHtml(p.name)}</span><span class="invoice-recipient-label">귀하</span>
+          </span>
         </div>
         <div class="invoice-intro">${monthViewYear}년 ${monthViewMonth}월 상담료는 아래와 같습니다.</div>
         <table class="invoice-detail-table">
           <tr><td>${consultRange}</td></tr>
           <tr><td>${count}회기 X ${unitPrice.toLocaleString()}원</td></tr>
-          <tr><td>${total.toLocaleString()}원</td></tr>
+          <tr><td>${total.toLocaleString()} 원</td></tr>
         </table>
         <div class="invoice-footer">
           <div>${footerDate}</div>
@@ -928,14 +940,67 @@ function renderInvoices(entries) {
     .join("");
 }
 
-async function printInvoices() {
-  let toPrint = [];
-
+function getSelectedEntriesForPrint() {
   if (calendarDisplayItems && calendarDisplayItems.length > 0) {
-    toPrint = calendarDisplayItems.filter((p) => selectedForPrint.has(p.id));
-  } else {
-    toPrint = db.data.filter((p) => selectedForPrint.has(p.id));
+    return calendarDisplayItems.filter((p) => selectedForPrint.has(p.id));
   }
+  return db.data.filter((p) => selectedForPrint.has(p.id));
+}
+
+function enrichEntriesForInvoice(toPrint) {
+  const consultDateMap = buildConsultDateMap(rawCalendarEvents);
+  const monthKey = getMonthKey(monthViewYear, monthViewMonth);
+  return toPrint.map((p) => {
+    const dateInCalendar = consultDateMap.get(p.name) || {};
+    const dbPerson = db.data.find((row) => row.id === p.id);
+    const dbMonthEntry = dbPerson?.monthlyData?.[monthKey];
+
+    return {
+      ...p,
+      firstDate: dateInCalendar.firstDate || p.firstDate || null,
+      lastDate:
+        dateInCalendar.lastDate ||
+        p.lastDate ||
+        dbMonthEntry?.lastVisitDate ||
+        null,
+    };
+  });
+}
+
+function renderInvoicePreview(targetId = "invoicePreviewModalArea") {
+  const previewArea = document.getElementById(targetId);
+  if (!previewArea) return;
+
+  const toPrint = getSelectedEntriesForPrint();
+  if (toPrint.length === 0) {
+    previewArea.innerHTML =
+      '<div class="invoice-preview-empty">선택된 청구 대상이 없습니다.</div>';
+    return;
+  }
+
+  const missingCount = toPrint.filter(
+    (p) => p.count === undefined || p.count === null,
+  );
+  if (missingCount.length > 0) {
+    previewArea.innerHTML =
+      '<div class="invoice-preview-empty">캘린더 연동 후 회수 데이터가 있어야 미리보기를 표시할 수 있습니다.</div>';
+    return;
+  }
+
+  previewArea.innerHTML = renderInvoices(enrichEntriesForInvoice(toPrint));
+}
+
+function openInvoicePreviewModal() {
+  renderInvoicePreview("invoicePreviewModalArea");
+  invoicePreviewModalComp.open();
+}
+
+function closeInvoicePreviewModal() {
+  invoicePreviewModalComp.close();
+}
+
+async function printInvoices() {
+  const toPrint = getSelectedEntriesForPrint();
 
   if (toPrint.length === 0) {
     showToast("선택된 인원이 없습니다.");
@@ -955,47 +1020,33 @@ async function printInvoices() {
     return;
   }
 
-  const consultDateMap = buildConsultDateMap(rawCalendarEvents);
-  const monthKey = getMonthKey(monthViewYear, monthViewMonth);
-  const toPrintWithDates = toPrint.map((p) => {
-    const dateInCalendar = consultDateMap.get(p.name) || {};
-    const dbPerson = db.data.find((row) => row.id === p.id);
-    const dbMonthEntry = dbPerson?.monthlyData?.[monthKey];
-
-    return {
-      ...p,
-      firstDate: dateInCalendar.firstDate || p.firstDate || null,
-      lastDate:
-        dateInCalendar.lastDate ||
-        p.lastDate ||
-        dbMonthEntry?.lastVisitDate ||
-        null,
-    };
-  });
-
+  const enriched = enrichEntriesForInvoice(toPrint);
   const printArea = document.getElementById("print-area");
-  printArea.innerHTML = renderInvoices(toPrintWithDates);
+  printArea.innerHTML = renderInvoices(enriched);
   await waitForPrintImages(printArea);
   await new Promise((resolve) => requestAnimationFrame(resolve));
 
+  const toDate = (v) => (v instanceof Date ? v.toISOString() : v || null);
   const pendingHistEntry = {
     id: "hist_" + Date.now(),
     year: monthViewYear,
     month: monthViewMonth,
     printedAt: new Date().toISOString(),
-    entries: toPrint.map((p) => ({
+    entries: enriched.map((p) => ({
       name: p.name,
       price: p.price,
       count: p.count,
       total: p.price * p.count,
+      firstDate: toDate(p.firstDate),
+      lastDate: toDate(p.lastDate),
     })),
   };
   const printCount = toPrint.length;
 
   const handleAfterPrint = () => {
     window.removeEventListener("afterprint", handleAfterPrint);
-    // 같은 월에 여러 번 인쇄해도 각각 누적 저장한다.
     db.printHistory.unshift(pendingHistEntry);
+    db.printHistory = db.printHistory.slice(0, 10);
     autosave();
     showToast(`${printCount}명 인쇄 완료 · 이력 누적 저장됨`);
   };
@@ -1009,11 +1060,48 @@ async function printInvoices() {
 // ════════════════════════════
 function deleteHistory(id) {
   if (!confirm("이 인쇄 이력을 삭제하시겠습니까?")) return;
-  const target = db.printHistory.find((h) => h.id === id);
   db.printHistory = db.printHistory.filter((h) => h.id !== id);
   autosave();
-  renderHistory(historyViewYear, historyViewMonth);
+  renderHistory();
   showToast("이력이 삭제되었습니다.");
+}
+
+async function reissueHistory(id) {
+  const h = db.printHistory.find((h) => h.id === id);
+  if (!h) return;
+
+  const entries = h.entries.map((e) => ({
+    name: e.name,
+    price: e.price,
+    count: e.count,
+    firstDate: e.firstDate || null,
+    lastDate: e.lastDate || null,
+  }));
+
+  const printArea = document.getElementById("print-area");
+  printArea.innerHTML = renderInvoices(entries);
+  await waitForPrintImages(printArea);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  const pendingHistEntry = {
+    id: "hist_" + Date.now(),
+    year: h.year,
+    month: h.month,
+    printedAt: new Date().toISOString(),
+    entries: h.entries,
+  };
+  const printCount = h.entries.length;
+
+  const handleAfterPrint = () => {
+    window.removeEventListener("afterprint", handleAfterPrint);
+    db.printHistory.unshift(pendingHistEntry);
+    db.printHistory = db.printHistory.slice(0, 10);
+    autosave();
+    showToast(`${printCount}명 재발행 완료 · 이력 누적 저장됨`);
+  };
+
+  window.addEventListener("afterprint", handleAfterPrint);
+  window.print();
 }
 
 // ════════════════════════════
@@ -1123,7 +1211,9 @@ async function fetchCalendarList({ skipAutoSelect = false } = {}) {
         SELECTED_CALENDAR_STORAGE_KEY,
       );
       if (savedCalendarId) {
-        const savedIdx = _calendarList.findIndex((c) => c.id === savedCalendarId);
+        const savedIdx = _calendarList.findIndex(
+          (c) => c.id === savedCalendarId,
+        );
         if (savedIdx >= 0) {
           selectCalendar(savedIdx);
           return;
@@ -1315,9 +1405,18 @@ function processAndRenderEvents(events) {
     const dateStr = event.start?.date
       ? event.start.date
       : String(event.start?.dateTime || "").slice(0, 10);
-    if (parsed.suffix === "노쇼")    { grouped[name].noShowCount += 1;        grouped[name].noShowDates.push(dateStr); }
-    if (parsed.suffix === "당일취소") { grouped[name].sameDayCancelCount += 1; grouped[name].sameDayCancelDates.push(dateStr); }
-    if (parsed.suffix === "사전취소") { grouped[name].advanceCancelCount += 1; grouped[name].advanceCancelDates.push(dateStr); }
+    if (parsed.suffix === "노쇼") {
+      grouped[name].noShowCount += 1;
+      grouped[name].noShowDates.push(dateStr);
+    }
+    if (parsed.suffix === "당일취소") {
+      grouped[name].sameDayCancelCount += 1;
+      grouped[name].sameDayCancelDates.push(dateStr);
+    }
+    if (parsed.suffix === "사전취소") {
+      grouped[name].advanceCancelCount += 1;
+      grouped[name].advanceCancelDates.push(dateStr);
+    }
 
     if (!parsed.isExcludedFromBilling) {
       grouped[name].count += 1;
@@ -1623,7 +1722,8 @@ function closeFixInvalidStatusModal() {
 async function saveFixInvalidStatus() {
   const item = invalidStatusItemsList[fixingInvalidStatusIdx];
   if (!item) return;
-  const status = document.getElementById("fixInvalidStatusSelect").value || null;
+  const status =
+    document.getElementById("fixInvalidStatusSelect").value || null;
   const nextSummary = composeCalendarSummary(item.baseName, status);
   if (!nextSummary) {
     showToast("이름이 비어 있어 상태를 수정할 수 없습니다.");
@@ -1670,7 +1770,10 @@ function syncPaymentEntries(toPrint) {
     const advanceCancelCount = Number.isFinite(+p.advanceCancelCount)
       ? +p.advanceCancelCount
       : 0;
-    const visitCount = Math.max(0, billedCount - noShowCount - sameDayCancelCount);
+    const visitCount = Math.max(
+      0,
+      billedCount - noShowCount - sameDayCancelCount,
+    );
 
     return {
       personId: p.id,
@@ -1754,7 +1857,9 @@ function deletePaymentEntry(year, month, personId) {
 
   record.entries = record.entries.filter((e) => e.personId !== personId);
   if (record.entries.length === 0) {
-    db.payments = db.payments.filter((p) => !(p.year === year && p.month === month));
+    db.payments = db.payments.filter(
+      (p) => !(p.year === year && p.month === month),
+    );
   }
 
   autosave();
@@ -1783,46 +1888,6 @@ function nextPaymentMonth() {
   renderPaymentHistory(paymentViewYear, paymentViewMonth);
 }
 
-function isCurrentHistoryMonthView() {
-  return historyViewYear === YEAR && historyViewMonth === MONTH;
-}
-
-function updateHistoryHeader() {
-  const label = document.getElementById("historyMonthLabel");
-  if (label) label.textContent = `${historyViewYear}년 ${historyViewMonth}월`;
-  const nextBtn = document.getElementById("btn-history-next");
-  if (nextBtn) nextBtn.disabled = isCurrentHistoryMonthView();
-}
-
-function prevHistoryMonth() {
-  if (historyViewMonth === 1) {
-    historyViewYear--;
-    historyViewMonth = 12;
-  } else {
-    historyViewMonth--;
-  }
-  updateHistoryHeader();
-  renderHistory(historyViewYear, historyViewMonth);
-}
-
-function nextHistoryMonth() {
-  if (isCurrentHistoryMonthView()) return;
-  if (historyViewMonth === 12) {
-    historyViewYear++;
-    historyViewMonth = 1;
-  } else {
-    historyViewMonth++;
-  }
-  if (
-    historyViewYear > YEAR ||
-    (historyViewYear === YEAR && historyViewMonth > MONTH)
-  ) {
-    historyViewYear = YEAR;
-    historyViewMonth = MONTH;
-  }
-  updateHistoryHeader();
-  renderHistory(historyViewYear, historyViewMonth);
-}
 
 // ════════════════════════════
 //  Person Detail Panel
@@ -1836,8 +1901,8 @@ function openPersonDetail(id) {
   personDetailModalComp.setBody(buildPersonDetailHtml(person), { html: true });
 
   // Action buttons
-  const deleteBtn  = document.getElementById("btn-delete-from-detail");
-  if (deleteBtn)  deleteBtn.style.display  = "";
+  const deleteBtn = document.getElementById("btn-delete-from-detail");
+  if (deleteBtn) deleteBtn.style.display = "";
 
   personDetailModalComp.open();
 }
@@ -1852,7 +1917,7 @@ function closePersonDetail() {
 //   rows: string[][]         (cell content per column, HTML allowed)
 function _detailTable(title, cols, rows, emptyMsg = "기록이 없습니다.") {
   const thCells = cols
-    .map(c => `<th style="text-align:${c.align || "left"}">${c.label}</th>`)
+    .map((c) => `<th style="text-align:${c.align || "left"}">${c.label}</th>`)
     .join("");
   if (rows.length === 0) {
     return `<div class="detail-section">
@@ -1861,9 +1926,12 @@ function _detailTable(title, cols, rows, emptyMsg = "기록이 없습니다.") {
     </div>`;
   }
   const tbodyRows = rows
-    .map(cells => {
+    .map((cells) => {
       const tds = cells
-        .map((v, i) => `<td style="text-align:${cols[i]?.align || "left"}">${v}</td>`)
+        .map(
+          (v, i) =>
+            `<td style="text-align:${cols[i]?.align || "left"}">${v}</td>`,
+        )
         .join("");
       return `<tr>${tds}</tr>`;
     })
@@ -1909,28 +1977,39 @@ function _buildYearlyData(person) {
   for (const [key, entry] of Object.entries(person.monthlyData || {})) {
     const y = key.slice(0, 4);
     if (!byYear[y]) {
-      byYear[y] = { year: y, visitCount: 0, noShowCount: 0, sameDayCancelCount: 0, advanceCancelCount: 0, totalPrice: 0 };
+      byYear[y] = {
+        year: y,
+        visitCount: 0,
+        noShowCount: 0,
+        sameDayCancelCount: 0,
+        advanceCancelCount: 0,
+        totalPrice: 0,
+      };
     }
-    byYear[y].visitCount        += +entry.visitCount        || 0;
-    byYear[y].noShowCount       += +entry.noShowCount       || 0;
-    byYear[y].sameDayCancelCount+= +entry.sameDayCancelCount|| 0;
-    byYear[y].advanceCancelCount+= +entry.advanceCancelCount|| 0;
-    byYear[y].totalPrice        += +entry.totalPrice        || 0;
+    byYear[y].visitCount += +entry.visitCount || 0;
+    byYear[y].noShowCount += +entry.noShowCount || 0;
+    byYear[y].sameDayCancelCount += +entry.sameDayCancelCount || 0;
+    byYear[y].advanceCancelCount += +entry.advanceCancelCount || 0;
+    byYear[y].totalPrice += +entry.totalPrice || 0;
   }
   return Object.values(byYear).sort((a, b) => b.year.localeCompare(a.year));
 }
 
 function buildPersonDetailHtml(person) {
   const registeredAt = person.registeredAt
-    ? new Date(person.registeredAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })
+    ? new Date(person.registeredAt).toLocaleDateString("ko-KR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
     : "—";
 
   // Status badge
   const statusBadge = person.deleted
     ? `<span class="badge badge-muted">삭제됨</span>`
     : person.active !== false
-    ? `<span class="badge badge-active">활성</span>`
-    : `<span class="badge badge-inactive">비활성</span>`;
+      ? `<span class="badge badge-active">활성</span>`
+      : `<span class="badge badge-inactive">비활성</span>`;
 
   // Meta grid
   const metaHtml = `
@@ -1960,14 +2039,18 @@ function buildPersonDetailHtml(person) {
       { label: "취소", align: "right" },
       { label: "합계금액", align: "right" },
     ],
-    yearlyData.map(d => [
+    yearlyData.map((d) => [
       `${d.year}년`,
       `${d.visitCount}회`,
-      d.noShowCount > 0 ? `<span class="text-danger">${d.noShowCount}회</span>` : "—",
-      (d.sameDayCancelCount + d.advanceCancelCount) > 0 ? `${d.sameDayCancelCount + d.advanceCancelCount}회` : "—",
+      d.noShowCount > 0
+        ? `<span class="text-danger">${d.noShowCount}회</span>`
+        : "—",
+      d.sameDayCancelCount + d.advanceCancelCount > 0
+        ? `${d.sameDayCancelCount + d.advanceCancelCount}회`
+        : "—",
       d.totalPrice > 0 ? formatCurrency(d.totalPrice) : "—",
     ]),
-    "방문 기록이 없습니다."
+    "방문 기록이 없습니다.",
   );
 
   // Price history table
@@ -1975,8 +2058,11 @@ function buildPersonDetailHtml(person) {
   const priceHtml = _detailTable(
     "상담료 변화내역",
     [{ label: "시작 월" }, { label: "상담료", align: "right" }],
-    priceHistory.map(h => [_fmtMonthKey(h.monthKey), formatCurrency(h.price)]),
-    "변화 내역이 없습니다."
+    priceHistory.map((h) => [
+      _fmtMonthKey(h.monthKey),
+      formatCurrency(h.price),
+    ]),
+    "변화 내역이 없습니다.",
   );
 
   // No-show / cancel date tables
@@ -1994,9 +2080,13 @@ function _buildIncidentHtml(person) {
     if (Array.isArray(entry.noShowDates))
       noShowDates.push(...entry.noShowDates);
     if (Array.isArray(entry.sameDayCancelDates))
-      cancelDates.push(...entry.sameDayCancelDates.map(d => ({ date: d, type: "당일취소" })));
+      cancelDates.push(
+        ...entry.sameDayCancelDates.map((d) => ({ date: d, type: "당일취소" })),
+      );
     if (Array.isArray(entry.advanceCancelDates))
-      cancelDates.push(...entry.advanceCancelDates.map(d => ({ date: d, type: "사전취소" })));
+      cancelDates.push(
+        ...entry.advanceCancelDates.map((d) => ({ date: d, type: "사전취소" })),
+      );
   }
 
   noShowDates.sort((a, b) => b.localeCompare(a));
@@ -2010,15 +2100,19 @@ function _buildIncidentHtml(person) {
   };
 
   return [
-    noShowDates.length > 0 && _detailTable(
-      `노쇼 이력 (${noShowDates.length}건)`,
-      [{ label: "날짜" }],
-      noShowDates.map(d => [_fmtDate(d)])
-    ),
-    cancelDates.length > 0 && _detailTable(
-      `취소 이력 (${cancelDates.length}건)`,
-      [{ label: "날짜" }, { label: "구분" }],
-      cancelDates.map(({ date, type }) => [_fmtDate(date), type])
-    ),
-  ].filter(Boolean).join("");
+    noShowDates.length > 0 &&
+      _detailTable(
+        `노쇼 이력 (${noShowDates.length}건)`,
+        [{ label: "날짜" }],
+        noShowDates.map((d) => [_fmtDate(d)]),
+      ),
+    cancelDates.length > 0 &&
+      _detailTable(
+        `취소 이력 (${cancelDates.length}건)`,
+        [{ label: "날짜" }, { label: "구분" }],
+        cancelDates.map(({ date, type }) => [_fmtDate(date), type]),
+      ),
+  ]
+    .filter(Boolean)
+    .join("");
 }

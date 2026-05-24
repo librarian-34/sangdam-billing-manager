@@ -892,11 +892,11 @@ header {
   margin-bottom: 8px;
 }
 
-.section-descrption {
+.section-description {
   font: var(--typo-body-lg);
   color: var(--on-surface-variant);
   margin-bottom: 16px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .section-title {
@@ -2125,64 +2125,125 @@ input:checked + .toggle-track::before {
   align-items: center;
   justify-content: flex-start;
   min-height: 22mm;
-  margin-bottom: 5mm;
 }
 
 .invoice-logo {
-  width: 34mm;
+  width: 31.6mm;
   height: auto;
   object-fit: contain;
 }
 
 .invoice-title {
   text-align: center;
-  font-size: 5.29mm;
+  font-size: 4.23mm;
   letter-spacing: 0.36em;
-  margin-top: 10mm;
+  margin-top: 6mm;
   margin-bottom: 7mm;
 }
 
 .invoice-recipient {
   text-align: right;
-  font-size: 3.97mm;
+  font-size: 3.53mm;
   margin-bottom: 8mm;
 }
 
-.invoice-recipient-name {
+.invoice-recipient-group {
   display: inline-block;
-  min-width: 30mm;
-  text-align: center;
   border-bottom: 0.26mm solid #444;
   padding-bottom: 0.26mm;
-  margin-right: 1.06mm;
+}
+
+.invoice-recipient-name,
+.invoice-recipient-label {
+  display: inline-block;
+  min-width: 6mm;
+  text-align: center;
+}
+
+.invoice-recipient-name {
+  letter-spacing: 0.3em;
+  margin-left: 3mm;
+}
+
+.invoice-recipient-label {
+  margin-left: 4mm;
+  margin-right: 3mm;
 }
 
 .invoice-intro {
-  font-size: 3.7mm;
+  font-size: 3.53mm;
   padding-top: 8mm;
+  margin-left: 6mm;
   margin-bottom: 4mm;
 }
 
 .invoice-detail-table {
-  width: 100%;
+  width: calc(100% - 12mm);
+  margin: 0mm 6mm 8mm;
   border-collapse: collapse;
   table-layout: fixed;
-  margin-bottom: 8mm;
 }
 
 .invoice-detail-table td {
   border: 0.26mm solid #222;
   text-align: center;
-  height: 12mm;
-  font-size: 4.23mm;
+  height: 10mm;
+  font-size: 3.53mm;
   padding: 0 1.06mm;
 }
 
 .invoice-footer {
   margin-top: auto;
   text-align: right;
-  font-size: 3.7mm;
+  font-size: 3.53mm;
   line-height: 1.7;
+}
+
+/* ─── Invoice preview (screen only) ─── */
+.invoice-preview-area {
+  min-height: 240px;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 12px;
+  background: #f5f3ef;
+}
+
+.invoice-preview-area:empty {
+  display: none;
+}
+
+.invoice-preview-empty {
+  text-align: center;
+  color: var(--on-surface-variant);
+  padding: 28px 16px;
+  background: #fff;
+  border: 1px dashed var(--outline-variant);
+  border-radius: 10px;
+}
+
+.invoice-preview-area .invoice-page {
+  width: 297mm;
+  min-height: 210mm;
+  margin: 0 auto 14px;
+  background: #fff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1);
+  page-break-after: auto;
+}
+
+.invoice-preview-area .invoice-page:last-child {
+  margin-bottom: 0;
+}
+
+.modal-invoice-preview {
+  width: 96vw;
+  max-width: 1400px;
+  max-height: 92vh;
+}
+
+.modal-invoice-preview .modal-body {
+  padding: 0 20px 20px;
 }
 
 /* ─── PRINT STYLES ─── */

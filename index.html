@@ -109,9 +109,9 @@
           <button
             class="btn btn-outlined btn-lg"
             id="btn-auth"
-            style="margin-top: 36px; border-radius: 9999px"
+            style="margin-top: 36px; border-radius: 9999px; background: #fff"
           >
-            <img height="24" src="/public/google_calendar.png" />
+            <img height="24" src="public/google_calendar.png" />
             Google 캘린더 연동
           </button>
         </div>
@@ -254,13 +254,21 @@
                 <div class="print-warning" id="printWarningMessage">
                   인쇄 안내
                 </div>
-                <button
-                  class="btn btn-md btn-filled btn-primary"
-                  id="btn-print-invoices"
-                >
-                  <svg class="icon"><use href="icons.svg#icon-print" /></svg>
-                  청구서 발행하기
-                </button>
+                <div style="display: flex; gap: 8px">
+                  <button
+                    class="btn btn-md btn-outlined btn-primary"
+                    id="btn-preview-invoices"
+                  >
+                    미리보기
+                  </button>
+                  <button
+                    class="btn btn-md btn-filled btn-primary"
+                    id="btn-print-invoices"
+                  >
+                    <svg class="icon"><use href="icons.svg#icon-print" /></svg>
+                    청구서 발행하기
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -341,36 +349,12 @@
 
       <!-- ── 인쇄 이력 ── -->
       <div class="panel" id="panel-history">
-        <div class="section-header">
-          <div class="month-title-nav">
-            <button
-              class="btn btn-outlined btn-sm month-nav-btn"
-              id="btn-history-prev"
-              aria-label="이전 달"
-            >
-              <svg class="icon"><use href="icons.svg#icon-chevron-left" /></svg>
-            </button>
-            <div
-              class="section-title month-period-label"
-              id="historyMonthLabel"
-            ></div>
-            <button
-              class="btn btn-outlined btn-sm month-nav-btn"
-              id="btn-history-next"
-              aria-label="다음 달"
-            >
-              <svg class="icon">
-                <use href="icons.svg#icon-chevron-right" />
-              </svg>
-            </button>
-          </div>
+        <div class="section-description">
+          지금까지 인쇄를 시도한 내역을 확인할 수 있습니다. 인쇄 내역은 최신 10개까지 저장됩니다.
         </div>
-             <div class="section-description">
-지금까지 인쇄를 시도한 내역을 확인할 수 있습니다.
-         </div>
-
-          <div id="historyContent"></div>
+        <div id="historyContent"></div>
       </div>
+
     </div>
     <!-- /content -->
 
@@ -723,6 +707,28 @@
             <svg class="icon"><use href="icons.svg#icon-delete" /></svg>
             내담자 삭제
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: 인쇄 미리보기 -->
+    <div class="modal-overlay" id="invoicePreviewModal">
+      <div class="modal modal-invoice-preview">
+        <div class="modal-header-row">
+          <div class="modal-title">청구서 미리보기</div>
+          <button
+            class="btn-icon-close"
+            id="btn-close-invoice-preview"
+            aria-label="닫기"
+          >
+            <svg class="icon"><use href="icons.svg#icon-x" /></svg>
+          </button>
+        </div>
+        <div class="modal-desc">
+          현재 선택된 청구 대상을 인쇄 레이아웃으로 확인합니다.
+        </div>
+        <div class="modal-body">
+          <div id="invoicePreviewModalArea" class="invoice-preview-area"></div>
         </div>
       </div>
     </div>
