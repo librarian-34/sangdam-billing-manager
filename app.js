@@ -1126,6 +1126,10 @@ function handleApiError(err, fallbackMessage) {
 }
 
 function handleAuthClick() {
+  if (!tokenClient) {
+    showToast("Google 연동 초기화 중입니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
   tokenClient.callback = async (resp) => {
     if (resp.error !== undefined) {
       console.error("[handleAuthClick/callback]", "OAuth 응답 에러", resp);
@@ -1295,7 +1299,7 @@ async function refreshCalendar() {
 function processAndRenderEvents(events) {
   rawCalendarEvents = events || [];
   const hdr = document.getElementById("month-section-header");
-  if (hdr) hdr.style.display = rawCalendarEvents.length > 0 ? "" : "none";
+  if (hdr) hdr.style.display = "";
   if (!events || events.length === 0) {
     const monthKey = getMonthKey(monthViewYear, monthViewMonth);
     db.data.forEach((person) => {
@@ -1495,10 +1499,26 @@ function processAndRenderEvents(events) {
 function openCalendarEventModal(payload = null) {
   const titleEl = calendarEventModalComp.getTitleEl();
   const saveBtn = document.getElementById("btn-save-cal-event");
+  const nameSelect = document.getElementById("calEventName");
+
+  // 활성 내담자 목록으로 select 채우기
+  const activeClients = db.data.filter((p) => p.active !== false);
+  const targetName = payload?.baseName || "";
+  const inDb = activeClients.some((p) => p.name === targetName);
+
+  let options = '<option value="">내담자 선택</option>';
+  // 편집 모드에서 DB에 없는 이름이면 별도 옵션으로 추가
+  if (targetName && !inDb) {
+    options += `<option value="${escapeHtml(targetName)}">${escapeHtml(targetName)} (미등록)</option>`;
+  }
+  options += activeClients
+    .map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`)
+    .join("");
+  nameSelect.innerHTML = options;
+  nameSelect.value = targetName;
 
   if (payload && payload.eventId) {
     editingCalendarEventId = payload.eventId;
-    document.getElementById("calEventName").value = payload.baseName || "";
     document.getElementById("calEventStatus").value = payload.eventStatus || "";
     document.getElementById("calEventDate").value =
       payload.date ||
@@ -1510,7 +1530,6 @@ function openCalendarEventModal(payload = null) {
     if (saveBtn) saveBtn.textContent = "변경 저장";
   } else {
     editingCalendarEventId = null;
-    document.getElementById("calEventName").value = "";
     document.getElementById("calEventStatus").value = "";
     const lastDateInViewMonth = new Date(
       monthViewYear,

@@ -109,7 +109,7 @@
           <button
             class="btn btn-outlined btn-lg"
             id="btn-auth"
-            style="margin-top: 36px; border-radius: 9999px; background: #fff"
+            style="margin-top: 36px; border-radius: 9999px; background: #fff; display: none"
           >
             <img height="24" src="public/google_calendar.png" />
             Google 캘린더 연동
@@ -548,12 +548,8 @@
         <div class="modal-body">
           <div class="form-row" style="flex-direction: column; gap: 12px">
             <div class="form-group">
-              <label class="form-label">내담자 이름</label>
-              <input
-                class="form-input"
-                id="calEventName"
-                placeholder="홍길동"
-              />
+              <label class="form-label">내담자</label>
+              <select class="form-input" id="calEventName"></select>
             </div>
             <div class="form-group">
               <label class="form-label">상태</label>
