@@ -30,8 +30,9 @@ function escapeHtml(value) {
 }
 
 const CALENDAR_EVENT_STATUSES = ['노쇼', '당일취소', '사전취소'];
-const BILLING_EXCLUDE_SUFFIXES = ['사전취소'];
-const LAST_DATE_EXCLUDE_SUFFIXES = [...CALENDAR_EVENT_STATUSES];
+const PAUSE_EVENT_SUFFIX = '휴진';
+const BILLING_EXCLUDE_SUFFIXES = ['사전취소', PAUSE_EVENT_SUFFIX];
+const LAST_DATE_EXCLUDE_SUFFIXES = [...CALENDAR_EVENT_STATUSES, PAUSE_EVENT_SUFFIX];
 
 function composeCalendarSummary(baseName, eventStatus = null) {
   const name = (baseName || '').trim();
@@ -50,12 +51,13 @@ function parseCalendarSummary(summary) {
       eventStatus: null,
       invalidStatusRaw: null,
       hasStatusIssue: false,
+      isPause: false,
       isExcludedFromBilling: false,
       isExcludedFromLastDate: false,
     };
   }
 
-  const validMatch = raw.match(/^(.*?)\s*\((노쇼|당일취소|사전취소)\)\s*$/);
+  const validMatch = raw.match(/^(.*?)\s*\((노쇼|당일취소|사전취소|휴진)\)\s*$/);
   if (validMatch) {
     const baseName = (validMatch[1] || '').trim();
     const suffix = validMatch[2];
@@ -63,9 +65,10 @@ function parseCalendarSummary(summary) {
       rawName: raw,
       baseName: baseName || raw,
       suffix,
-      eventStatus: suffix,
+      eventStatus: suffix === PAUSE_EVENT_SUFFIX ? null : suffix,
       invalidStatusRaw: null,
       hasStatusIssue: false,
+      isPause: suffix === PAUSE_EVENT_SUFFIX,
       isExcludedFromBilling: BILLING_EXCLUDE_SUFFIXES.includes(suffix),
       isExcludedFromLastDate: LAST_DATE_EXCLUDE_SUFFIXES.includes(suffix),
     };
@@ -98,7 +101,48 @@ function parseCalendarSummary(summary) {
     eventStatus: null,
     invalidStatusRaw,
     hasStatusIssue,
+    isPause: false,
     isExcludedFromBilling: false,
     isExcludedFromLastDate: false,
   };
+}
+
+function isExcludedEvent(title, keywords) {
+  const value = String(title || '');
+  return (keywords || []).some((keyword) => value.includes(keyword));
+}
+
+function getEventDateString(event) {
+  return event?.start?.date
+    ? event.start.date
+    : String(event?.start?.dateTime || '').slice(0, 10);
+}
+
+function isDateWithinRange(dateStr, startDate, endDate) {
+  if (!dateStr || !startDate || !endDate) return false;
+  return dateStr >= startDate && dateStr <= endDate;
+}
+
+function isDateInPausedPeriods(dateStr, pausedPeriods) {
+  return (pausedPeriods || []).some((period) => {
+    if (!period || period.canceledAt) return false;
+    return isDateWithinRange(dateStr, period.startDate, period.endDate);
+  });
+}
+
+function toPausedTitle(title) {
+  const value = String(title || '').trim();
+  if (!value) return '';
+  return value.includes('(휴진)') ? value : `${value}(휴진)`;
+}
+
+function addDaysToDate(dateStr, days) {
+  const base = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(base.getTime())) return '';
+  base.setDate(base.getDate() + days);
+  return [
+    base.getFullYear(),
+    String(base.getMonth() + 1).padStart(2, '0'),
+    String(base.getDate()).padStart(2, '0'),
+  ].join('-');
 }

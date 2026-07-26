@@ -13,7 +13,10 @@ let unmatchedListModalComp = null;
 let invalidStatusListModalComp = null;
 let fixInvalidStatusModalComp = null;
 let personDetailModalComp = null;
+let pauseReminderModalComp = null;
 let invoicePreviewModalComp = null;
+let pauseReminderQueue = [];
+let currentPauseReminderGroup = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   const _weekday = ["일", "월", "화", "수", "목", "금", "토"][
@@ -95,11 +98,57 @@ document.addEventListener("DOMContentLoaded", () => {
     .addEventListener("click", closeEditModal);
   document.getElementById("btn-save-edit").addEventListener("click", saveEdit);
   document
+    .getElementById("editClientGroup")
+    .addEventListener("change", updateEditFormVisibility);
+  document
+    .getElementById("editActive")
+    .addEventListener("change", updateEditFormVisibility);
+  document
+    .getElementById("editPauseStart")
+    .addEventListener("change", updatePauseEndFromWeeks);
+  document
+    .getElementById("editPauseWeeks")
+    .addEventListener("change", updatePauseEndFromWeeks);
+  ["editName", "editPrice"].forEach((id) => {
+    document.getElementById(id).addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveEdit();
+    });
+  });
+  document.getElementById("btn-open-keyword-modal").addEventListener("click", () => {
+    renderExcludedKeywords();
+    document.getElementById("keywordModal").classList.add("show");
+    document.getElementById("excludedKeywordInput").focus();
+  });
+  document.getElementById("btn-close-keyword-modal").addEventListener("click", () => {
+    document.getElementById("keywordModal").classList.remove("show");
+  });
+  document.getElementById("keywordModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove("show");
+  });
+  document
+    .getElementById("btn-add-excluded-keyword")
+    .addEventListener("click", addExcludedKeyword);
+  document
+    .getElementById("excludedKeywordInput")
+    .addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.isComposing) addExcludedKeyword();
+    });
+  document
+    .getElementById("excludedKeywordList")
+    .addEventListener("click", (e) => {
+      const el = e.target.closest("[data-action='remove-excluded-keyword']");
+      if (!el) return;
+      removeExcludedKeyword(Number(el.dataset.idx));
+    });
+  document
     .getElementById("btn-close-cal-event")
     .addEventListener("click", closeCalendarEventModal);
   document
     .getElementById("btn-save-cal-event")
     .addEventListener("click", saveCalendarEvent);
+  document
+    .getElementById("btn-open-add-unmatched-from-cal")
+    .addEventListener("click", openAddUnmatchedFromCalendarEvent);
   document
     .getElementById("btn-close-add-unmatched")
     .addEventListener("click", closeAddUnmatchedModal);
@@ -134,6 +183,15 @@ document.addEventListener("DOMContentLoaded", () => {
     .getElementById("btn-close-invoice-preview")
     .addEventListener("click", closeInvoicePreviewModal);
   document
+    .getElementById("btn-close-pause-reminder")
+    .addEventListener("click", closePauseReminderModal);
+  document
+    .getElementById("btn-confirm-pause-reminder")
+    .addEventListener("click", confirmPauseReminder);
+  document
+    .getElementById("btn-dismiss-pause-reminder")
+    .addEventListener("click", dismissCurrentPauseReminder);
+  document
     .getElementById("btn-close-fix-invalid-status")
     .addEventListener("click", closeFixInvalidStatusModal);
   document
@@ -142,6 +200,20 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("btn-close-person-detail")
     .addEventListener("click", closePersonDetail);
+  document
+    .querySelector("#personDetailModal .detail-body")
+    .addEventListener("click", (e) => {
+      const el = e.target.closest('[data-action="cancel-pause-period"]');
+      if (el) {
+        cancelPausePeriod(el.dataset.personId, el.dataset.periodId);
+        return;
+      }
+      const memoAction = e.target.closest("[data-memo-action]");
+      if (!memoAction) return;
+      if (memoAction.dataset.memoAction === "edit") startDetailMemoEdit();
+      if (memoAction.dataset.memoAction === "cancel") cancelDetailMemoEdit();
+      if (memoAction.dataset.memoAction === "save") saveDetailMemo();
+    });
   document
     .getElementById("btn-delete-from-detail")
     .addEventListener("click", () => {
@@ -253,6 +325,12 @@ document.addEventListener("DOMContentLoaded", () => {
     },
   });
   initModal({ id: "invoicePreviewModal" });
+  initModal({
+    id: "pauseReminderModal",
+    onClose: () => {
+      currentPauseReminderGroup = null;
+    },
+  });
   editModalComp = createModalComponent({
     id: "editModal",
     selectors: { title: "#editModalTitle" },
@@ -275,7 +353,28 @@ document.addEventListener("DOMContentLoaded", () => {
     id: "personDetailModal",
     selectors: { title: ".detail-name", body: ".detail-body" },
   });
+  pauseReminderModalComp = createModalComponent({
+    id: "pauseReminderModal",
+    selectors: { body: "#pauseReminderBody" },
+  });
   invoicePreviewModalComp = createModalComponent({ id: "invoicePreviewModal" });
+
+  // ── Event delegation: groupFilterTabs ──
+  document.getElementById("groupFilterTabs").addEventListener("click", (e) => {
+    const el = e.target.closest('[data-action="filter-client-group"]');
+    if (!el) return;
+    clientGroupFilter = el.dataset.group;
+    renderGroupFilterTabs();
+    renderDataTable();
+  });
+
+  // ── Event delegation: billingGroupTabs ──
+  document.getElementById("billingGroupTabs").addEventListener("click", (e) => {
+    const el = e.target.closest('[data-action="filter-billing-group"]');
+    if (!el) return;
+    billingGroupFilter = el.dataset.group;
+    renderPeopleList();
+  });
 
   // ── Event delegation: dataTableBody ──
   const dataTableBody = document.getElementById("dataTableBody");
@@ -328,7 +427,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Event delegation: historyContent ──
   document.getElementById("historyContent").addEventListener("click", (e) => {
     const del = e.target.closest('[data-action="delete-history"]');
-    if (del) { deleteHistory(del.dataset.id); return; }
+    if (del) {
+      deleteHistory(del.dataset.id);
+      return;
+    }
     const reissue = e.target.closest('[data-action="reissue-history"]');
     if (reissue) reissueHistory(reissue.dataset.id);
   });
@@ -352,14 +454,449 @@ document.addEventListener("DOMContentLoaded", () => {
     renderDataTable();
   });
 
+  // ── Event delegation: manualInvoiceRows ──
+  document.getElementById("manualInvoiceRows").addEventListener("change", (e) => {
+    const el = e.target.closest('[data-action="manual-invoice-field"]');
+    if (!el) return;
+    updateManualInvoiceRowField(el.dataset.rowId, el.dataset.field, el.value);
+  });
+  document.getElementById("manualInvoiceRows").addEventListener("click", (e) => {
+    const el = e.target.closest('[data-action="manual-invoice-remove-row"]');
+    if (!el) return;
+    removeManualInvoiceRow(el.dataset.rowId);
+  });
+  document
+    .getElementById("btn-add-manual-invoice-row")
+    .addEventListener("click", addManualInvoiceRow);
+  document
+    .getElementById("btn-issue-manual-invoice")
+    .addEventListener("click", issueManualInvoice);
+  document
+    .getElementById("manualInvoiceMonth")
+    .addEventListener("change", renderManualInvoicePreview);
+
   document.addEventListener("click", (e) => {
     const menu = document.getElementById("calendarActionsMenu");
     if (!menu) return;
     if (!menu.contains(e.target)) closeCalendarActionsMenu();
   });
 
+  initClientGroupSelect();
   loadFromStorage();
+  renderExcludedKeywords();
 });
+
+// ════════════════════════════
+//  Form Helpers
+// ════════════════════════════
+function initClientGroupSelect() {
+  const select = document.getElementById("editClientGroup");
+  if (!select) return;
+  select.innerHTML = CLIENT_GROUP_OPTIONS.map(
+    (option) =>
+      `<option value="${option.value}">${escapeHtml(option.label)}</option>`,
+  ).join("");
+}
+
+function getSelectedClientGroupOption() {
+  const value = document.getElementById("editClientGroup")?.value;
+  return getClientGroupOption(value);
+}
+
+function updateEditFormVisibility() {
+  const group = getSelectedClientGroupOption();
+  const isDirect = group.billingType === "DIRECT";
+  const priceRow = document.getElementById("editPriceRow");
+  const pauseFields = document.getElementById("editPauseFields");
+  const statusValue = document.getElementById("editActive").value;
+  const priceInput = document.getElementById("editPrice");
+  if (priceRow) {
+    priceRow.style.display = "";
+    if (priceInput) {
+      priceInput.disabled = !isDirect;
+      if (!isDirect) priceInput.value = "";
+    }
+  }
+  if (pauseFields)
+    pauseFields.style.display = statusValue === "paused" ? "grid" : "none";
+}
+
+function updatePauseEndFromWeeks() {
+  const start = document.getElementById("editPauseStart").value;
+  const weeks = Number(document.getElementById("editPauseWeeks").value);
+  if (!start || !Number.isFinite(weeks) || weeks <= 0) return;
+  document.getElementById("editPauseEnd").value = addDaysToDate(
+    start,
+    weeks * 7,
+  );
+}
+
+function getStatusFromEditValue(value) {
+  if (value === "false") return "INACTIVE";
+  if (value === "paused") return "PAUSED";
+  return "ACTIVE";
+}
+
+function getEditValueFromStatus(person) {
+  if (person?.status === "PAUSED") return "paused";
+  return person?.active === false || person?.status === "INACTIVE"
+    ? "false"
+    : "true";
+}
+
+function buildPausePeriodFromEdit(status) {
+  if (status !== "PAUSED") return null;
+  const startDate = document.getElementById("editPauseStart").value;
+  const endDate = document.getElementById("editPauseEnd").value;
+  const weeksValue = document.getElementById("editPauseWeeks").value;
+  const weeks = weeksValue ? Number(weeksValue) : null;
+  const reason =
+    document.getElementById("editPauseReason").value.trim() || null;
+  if (!startDate || !endDate) {
+    showToast("휴진 시작일과 종료일을 입력하세요.");
+    return null;
+  }
+  if (endDate < startDate) {
+    showToast("휴진 종료일을 시작일 이후로 입력하세요.");
+    return null;
+  }
+  return {
+    id: generateId(),
+    startDate,
+    endDate,
+    weeks: Number.isFinite(weeks) ? weeks : null,
+    reason,
+    affectedEvents: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: null,
+    canceledAt: null,
+  };
+}
+
+function mergePausePeriod(periods, nextPeriod) {
+  const normalized = Array.isArray(periods) ? periods : [];
+  if (!nextPeriod) return normalized;
+  const sameActivePeriod = normalized.some(
+    (period) =>
+      !period.canceledAt &&
+      period.startDate === nextPeriod.startDate &&
+      period.endDate === nextPeriod.endDate,
+  );
+  return sameActivePeriod ? normalized : [...normalized, nextPeriod];
+}
+
+function isSamePausePeriod(a, b) {
+  return !!a && !!b && a.startDate === b.startDate && a.endDate === b.endDate;
+}
+
+function updatePausePeriod(target, source) {
+  if (!target || !source) return;
+  target.weeks = source.weeks;
+  target.reason = source.reason;
+  target.updatedAt = new Date().toISOString();
+}
+
+async function applyPauseToCalendarEvents(person, pausePeriod) {
+  if (!selectedCalendarId || !Array.isArray(rawCalendarEvents)) return;
+  const targetEvents = rawCalendarEvents.filter((event) => {
+    const parsed = parseCalendarSummary(event.summary);
+    const dateStr = getEventDateString(event);
+    return (
+      parsed.baseName === person.name &&
+      isDateWithinRange(dateStr, pausePeriod.startDate, pausePeriod.endDate) &&
+      !parsed.isPause
+    );
+  });
+  if (targetEvents.length === 0) return;
+
+  const affectedEvents = [];
+  try {
+    await Promise.all(
+      targetEvents.map(async (event) => {
+        const pausedTitle = toPausedTitle(event.summary);
+        await apiUpdateEvent(selectedCalendarId, event.id, {
+          summary: pausedTitle,
+        });
+        affectedEvents.push({
+          eventId: event.id,
+          originalTitle: event.summary || "",
+          pausedTitle,
+          eventDate: getEventDateString(event),
+        });
+      }),
+    );
+    pausePeriod.affectedEvents = [
+      ...(pausePeriod.affectedEvents || []),
+      ...affectedEvents,
+    ];
+    pausePeriod.updatedAt = new Date().toISOString();
+    rawCalendarEvents = rawCalendarEvents.map((event) => {
+      const changed = affectedEvents.find((item) => item.eventId === event.id);
+      return changed ? { ...event, summary: changed.pausedTitle } : event;
+    });
+  } catch (err) {
+    handleApiError(err, "휴진 일정명 변경에 실패했습니다.");
+  }
+}
+
+// ════════════════════════════
+//  Pause Reminder / Cancellation
+// ════════════════════════════
+function getTodayDateString() {
+  return `${YEAR}-${String(MONTH).padStart(2, "0")}-${String(DAY).padStart(2, "0")}`;
+}
+
+function dateDiffInDays(fromDateStr, toDateStr) {
+  const from = new Date(`${fromDateStr}T00:00:00`);
+  const to = new Date(`${toDateStr}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+  return Math.round((to - from) / 86400000);
+}
+
+function formatDateLabel(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr || "—";
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+function isMonthPanelActive() {
+  return document.getElementById("panel-month")?.classList.contains("active");
+}
+
+function readPauseReminderDismissals() {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(PAUSE_REMINDER_DISMISS_STORAGE_KEY) || "{}",
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writePauseReminderDismissals(dismissals) {
+  localStorage.setItem(
+    PAUSE_REMINDER_DISMISS_STORAGE_KEY,
+    JSON.stringify(dismissals || {}),
+  );
+}
+
+function cleanupPauseReminderDismissals() {
+  const today = getTodayDateString();
+  const dismissals = readPauseReminderDismissals();
+  let changed = false;
+  Object.keys(dismissals).forEach((endDate) => {
+    if (endDate < today) {
+      delete dismissals[endDate];
+      changed = true;
+    }
+  });
+  if (changed) writePauseReminderDismissals(dismissals);
+  return dismissals;
+}
+
+function collectPauseReminderGroups() {
+  const today = getTodayDateString();
+  const dismissals = cleanupPauseReminderDismissals();
+  const byEndDate = new Map();
+
+  db.data.forEach((person) => {
+    if (!person || person.deleted || person.active === false) return;
+    (person.pausedPeriods || []).forEach((period) => {
+      if (!period || period.canceledAt || !period.endDate) return;
+      const daysLeft = dateDiffInDays(today, period.endDate);
+      if (
+        daysLeft == null ||
+        daysLeft < 0 ||
+        daysLeft > PAUSE_REMINDER_WINDOW_DAYS ||
+        dismissals[period.endDate]
+      ) {
+        return;
+      }
+
+      const group = byEndDate.get(period.endDate) || {
+        endDate: period.endDate,
+        daysLeft,
+        items: [],
+      };
+      group.items.push({
+        personId: person.id,
+        personName: person.name,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        weeks: period.weeks,
+        reason: period.reason,
+      });
+      byEndDate.set(period.endDate, group);
+    });
+  });
+
+  return [...byEndDate.values()].sort((a, b) =>
+    a.endDate.localeCompare(b.endDate),
+  );
+}
+
+function showPauseEndRemindersIfNeeded() {
+  if (!isMonthPanelActive() || !pauseReminderModalComp) return;
+  const root = pauseReminderModalComp.getRoot();
+  if (root?.classList.contains("show")) return;
+  pauseReminderQueue = collectPauseReminderGroups();
+  openNextPauseReminderGroup();
+}
+
+function buildPauseReminderHtml(group) {
+  const count = group.items.length;
+  const dayLabel =
+    group.daysLeft === 0 ? "오늘" : `${group.daysLeft}일 뒤`;
+  const rows = group.items
+    .map(
+      (item) => `
+        <tr>
+          <td><strong>${escapeHtml(item.personName)}</strong></td>
+          <td>${formatDateLabel(item.startDate)} ~ ${formatDateLabel(item.endDate)}</td>
+          <td>${item.weeks ? `${item.weeks}주` : "—"}</td>
+        </tr>`,
+    )
+    .join("");
+
+  return `
+    <div class="pause-reminder-summary">
+      <strong>${count}명</strong>의 휴진이 ${dayLabel} 종료됩니다.
+      <span>${formatDateLabel(group.endDate)}</span>
+    </div>
+    <table class="detail-table pause-reminder-table">
+      <thead>
+        <tr>
+          <th>내담자</th>
+          <th>휴진 기간</th>
+          <th>주수</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function openNextPauseReminderGroup() {
+  if (!pauseReminderQueue.length || !pauseReminderModalComp) return;
+  currentPauseReminderGroup = pauseReminderQueue.shift();
+  pauseReminderModalComp.setBody(buildPauseReminderHtml(currentPauseReminderGroup), {
+    html: true,
+  });
+  pauseReminderModalComp.open();
+}
+
+function closePauseReminderModal() {
+  pauseReminderQueue = [];
+  pauseReminderModalComp.close();
+}
+
+function confirmPauseReminder() {
+  pauseReminderModalComp.close();
+  setTimeout(openNextPauseReminderGroup, 0);
+}
+
+function dismissCurrentPauseReminder() {
+  if (currentPauseReminderGroup?.endDate) {
+    const dismissals = readPauseReminderDismissals();
+    dismissals[currentPauseReminderGroup.endDate] = new Date().toISOString();
+    writePauseReminderDismissals(dismissals);
+  }
+  pauseReminderModalComp.close();
+  setTimeout(openNextPauseReminderGroup, 0);
+}
+
+async function restorePauseCalendarEvents(period) {
+  const affectedEvents = (period.affectedEvents || []).filter(
+    (event) => event.eventId && event.originalTitle,
+  );
+  if (affectedEvents.length === 0) return { restored: 0, failed: 0, skipped: 0 };
+  if (!selectedCalendarId) {
+    return { restored: 0, failed: 0, skipped: affectedEvents.length };
+  }
+
+  const results = await Promise.allSettled(
+    affectedEvents.map((event) =>
+      apiUpdateEvent(selectedCalendarId, event.eventId, {
+        summary: event.originalTitle,
+      }),
+    ),
+  );
+  const restoredEvents = affectedEvents.filter(
+    (_, idx) => results[idx].status === "fulfilled",
+  );
+  rawCalendarEvents = rawCalendarEvents.map((event) => {
+    const restored = restoredEvents.find((item) => item.eventId === event.id);
+    return restored ? { ...event, summary: restored.originalTitle } : event;
+  });
+  return {
+    restored: restoredEvents.length,
+    failed: results.length - restoredEvents.length,
+    skipped: 0,
+  };
+}
+
+async function cancelPausePeriod(personId, periodId) {
+  const person = db.data.find((p) => p.id === personId);
+  const period = person?.pausedPeriods?.find((item) => item.id === periodId);
+  if (!person || !period || period.canceledAt) return;
+
+  const affectedCount = Array.isArray(period.affectedEvents)
+    ? period.affectedEvents.length
+    : 0;
+  const restoreMessage = affectedCount
+    ? `\n연결된 캘린더 일정 ${affectedCount}건은 원래 제목으로 되돌립니다.`
+    : "";
+  if (
+    !confirm(
+      `"${person.name}" 휴진을 취소하시겠습니까?\n` +
+        `${period.startDate || "—"} ~ ${period.endDate || "—"}${restoreMessage}`,
+    )
+  ) {
+    return;
+  }
+
+  let restoreResult = { restored: 0, failed: 0, skipped: 0 };
+  try {
+    restoreResult = await restorePauseCalendarEvents(period);
+  } catch (err) {
+    handleApiError(err, "휴진 일정 원복 중 오류가 발생했습니다.");
+  }
+
+  period.canceledAt = new Date().toISOString();
+  period.updatedAt = period.canceledAt;
+
+  const today = getTodayDateString();
+  const hasActiveCurrentPause = (person.pausedPeriods || []).some(
+    (item) =>
+      item.id !== period.id &&
+      !item.canceledAt &&
+      isDateWithinRange(today, item.startDate, item.endDate),
+  );
+  if (person.status === "PAUSED" && !hasActiveCurrentPause) {
+    person.status = "ACTIVE";
+    person.active = true;
+  }
+
+  await autosave();
+  if (rawCalendarEvents.length > 0) {
+    processAndRenderEvents(rawCalendarEvents);
+  } else {
+    renderAll();
+  }
+  if (_detailPersonId === personId) openPersonDetail(personId);
+
+  if (restoreResult.skipped > 0) {
+    showToast("휴진은 취소됐지만 캘린더 미연동으로 일정명은 원복하지 못했습니다.");
+  } else if (restoreResult.failed > 0) {
+    showToast(
+      `휴진은 취소됐고 일정 ${restoreResult.restored}건 원복, ${restoreResult.failed}건 실패했습니다.`,
+    );
+  } else {
+    showToast("휴진이 취소되었습니다.");
+  }
+}
 
 // ════════════════════════════
 //  Persistence
@@ -380,9 +917,11 @@ function loadFromStorage() {
       return;
     }
     db = normalizeDbSchema(parsed);
+    backupLegacyData(parsed, "localStorage");
     document.getElementById("noFileOverlay").style.display = "none";
     document.getElementById("fileNameLabel").textContent = "변경사항 없음";
     renderAll();
+    showPauseEndRemindersIfNeeded();
   } catch (e) {
     console.error("[loadFromStorage]", "localStorage 데이터 파싱 실패", e);
   }
@@ -404,11 +943,14 @@ async function openFile() {
     fileHandle = handle;
     const file = await handle.getFile();
     const text = await file.text();
-    db = normalizeDbSchema(JSON.parse(text));
+    const parsed = JSON.parse(text);
+    backupLegacyData(parsed, file.name);
+    db = normalizeDbSchema(parsed);
     document.getElementById("noFileOverlay").style.display = "none";
     document.getElementById("fileNameLabel").textContent = file.name;
     autosave();
     renderAll();
+    showPauseEndRemindersIfNeeded();
     showToast(`"${file.name}" 불러왔습니다.`);
   } catch (e) {
     if (e.name !== "AbortError") {
@@ -438,6 +980,7 @@ async function saveFile() {
     }
   }
   try {
+    await flushScheduledAutosave();
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(getPersistableDb(), null, 2));
     await writable.close();
@@ -455,6 +998,7 @@ function createNewFile() {
   document.getElementById("fileNameLabel").textContent = "새 파일 (미저장)";
   autosave();
   renderAll();
+  showPauseEndRemindersIfNeeded();
 }
 
 // ════════════════════════════
@@ -471,6 +1015,8 @@ function switchTab(name) {
   if (name === "history") renderHistory();
   if (name === "payment")
     renderPaymentHistory(paymentViewYear, paymentViewMonth);
+  if (name === "month") showPauseEndRemindersIfNeeded();
+  if (name === "manual") renderManualInvoice();
 }
 
 function isCurrentMonthView() {
@@ -481,7 +1027,7 @@ function updateMonthHeader() {
   document.getElementById("monthTitle").textContent =
     `${monthViewYear}년 ${monthViewMonth}월`;
   const nextBtn = document.getElementById("btn-month-next");
-  if (nextBtn) nextBtn.disabled = isCurrentMonthView();
+  if (nextBtn) nextBtn.disabled = false;
 }
 
 function prevMonthView() {
@@ -495,18 +1041,10 @@ function prevMonthView() {
 }
 
 function nextMonthView() {
-  if (isCurrentMonthView()) return;
   monthViewMonth += 1;
   if (monthViewMonth > 12) {
     monthViewMonth = 1;
     monthViewYear += 1;
-  }
-  if (
-    monthViewYear > YEAR ||
-    (monthViewYear === YEAR && monthViewMonth > MONTH)
-  ) {
-    monthViewYear = YEAR;
-    monthViewMonth = MONTH;
   }
   updateMonthHeader();
   if (selectedCalendarId) fetchCalendarEvents();
@@ -532,29 +1070,44 @@ function toggleCalendarPerson(id, checked) {
 
 function selectAllCalendar() {
   if (calendarDisplayItems) {
-    calendarDisplayItems.forEach((p) => selectedForPrint.add(p.id));
+    calendarDisplayItems
+      .filter((p) => p.clientGroup === "PERSONAL")
+      .forEach((p) => selectedForPrint.add(p.id));
     renderCalendarList(calendarDisplayItems, unmatchedItemsList);
   }
 }
 
 function deselectAllCalendar() {
-  selectedForPrint.clear();
+  if (calendarDisplayItems) {
+    calendarDisplayItems
+      .filter((p) => p.clientGroup === "PERSONAL")
+      .forEach((p) => selectedForPrint.delete(p.id));
+  } else {
+    selectedForPrint.clear();
+  }
   if (calendarDisplayItems) {
     renderCalendarList(calendarDisplayItems, unmatchedItemsList);
   }
 }
 
 function snapshotCurrentMonthPrice(person, price) {
-  if (!person || !Number.isFinite(+price)) return;
+  if (!person) return;
   if (!person.monthlyData || typeof person.monthlyData !== "object") {
     person.monthlyData = {};
   }
 
   const monthKey = getMonthKey(YEAR, MONTH);
-  const entry = normalizeMonthlyEntry(person.monthlyData[monthKey], +price);
-  entry.price = +price;
+  const normalizedPrice = Number.isFinite(+price) ? +price : null;
+  const entry = normalizeMonthlyEntry(
+    person.monthlyData[monthKey],
+    normalizedPrice,
+  );
+  entry.price = normalizedPrice;
   entry.totalPrice =
-    entry.price * (Number.isFinite(+entry.visitCount) ? +entry.visitCount : 0);
+    normalizedPrice == null
+      ? 0
+      : normalizedPrice *
+        (Number.isFinite(+entry.visitCount) ? +entry.visitCount : 0);
   person.monthlyData[monthKey] = entry;
 }
 
@@ -563,8 +1116,14 @@ function openAddPersonModal() {
   editModalComp.setTitle("내담자 등록");
   document.getElementById("btn-save-edit").textContent = "등록";
   document.getElementById("editName").value = "";
+  document.getElementById("editClientGroup").value = "PERSONAL";
   document.getElementById("editPrice").value = "";
   document.getElementById("editActive").value = "true";
+  document.getElementById("editPauseStart").value = "";
+  document.getElementById("editPauseWeeks").value = "4";
+  document.getElementById("editPauseEnd").value = "";
+  document.getElementById("editPauseReason").value = "";
+  updateEditFormVisibility();
   editModalComp.open();
 }
 
@@ -580,14 +1139,32 @@ function openEditModal(id) {
     const p = db.data.find((x) => x.id === id);
     if (!p) return;
     document.getElementById("editName").value = p.name;
-    document.getElementById("editPrice").value = p.currentPrice ?? p.price ?? 0;
-    document.getElementById("editActive").value =
-      p.active !== false ? "true" : "false";
+    document.getElementById("editClientGroup").value =
+      p.clientGroup || "PERSONAL";
+    document.getElementById("editPrice").value =
+      p.currentPrice ?? p.price ?? "";
+    document.getElementById("editActive").value = getEditValueFromStatus(p);
+    const activePause = (p.pausedPeriods || []).find(
+      (period) => !period.canceledAt && p.status === "PAUSED",
+    );
+    document.getElementById("editPauseStart").value =
+      activePause?.startDate || "";
+    document.getElementById("editPauseWeeks").value =
+      activePause?.weeks == null ? "" : String(activePause.weeks);
+    document.getElementById("editPauseEnd").value = activePause?.endDate || "";
+    document.getElementById("editPauseReason").value =
+      activePause?.reason || "";
   } else {
     document.getElementById("editName").value = "";
+    document.getElementById("editClientGroup").value = "PERSONAL";
     document.getElementById("editPrice").value = "";
     document.getElementById("editActive").value = "true";
+    document.getElementById("editPauseStart").value = "";
+    document.getElementById("editPauseWeeks").value = "4";
+    document.getElementById("editPauseEnd").value = "";
+    document.getElementById("editPauseReason").value = "";
   }
+  updateEditFormVisibility();
   editModalComp.open();
 }
 
@@ -595,31 +1172,76 @@ function closeEditModal() {
   editModalComp.close();
 }
 
-function saveEdit() {
+async function saveEdit() {
   const isUpdate = !!editingId;
   const name = document.getElementById("editName").value.trim();
+  const group = getSelectedClientGroupOption();
   const price = parseInt(document.getElementById("editPrice").value, 10);
-  const isActive = document.getElementById("editActive").value === "true";
+  const isDirect = group.billingType === "DIRECT";
+  const status = getStatusFromEditValue(
+    document.getElementById("editActive").value,
+  );
+  const isActive = status !== "INACTIVE";
 
   if (!name) {
     showToast("이름을 입력하세요.");
     return;
   }
-  if (isNaN(price) || price < 0) {
+  if (isDirect && (isNaN(price) || price < 0)) {
     showToast("가격을 확인하세요.");
     return;
   }
+  const currentPrice = isDirect ? price : null;
+  const priceValue = isDirect ? price : null;
+  const pausePeriod = buildPausePeriodFromEdit(status);
+  if (status === "PAUSED" && !pausePeriod) return;
+  let savedPerson = null;
+  let savedPausePeriod = null;
 
   if (editingId) {
     const p = db.data.find((x) => x.id === editingId);
     if (!p) return;
     const prevName = p.name;
     const prevPrice = p.currentPrice ?? p.price ?? 0;
+    const previousActivePause = (p.pausedPeriods || []).find(
+      (period) => !period.canceledAt && p.status === "PAUSED",
+    );
     p.name = name;
-    p.currentPrice = price;
-    p.price = price;
     p.active = isActive;
-    snapshotCurrentMonthPrice(p, price);
+    p.status = status;
+    p.clientType = group.clientType;
+    p.clientGroup = group.value;
+    p.billingType = group.billingType;
+    p.currentPrice = currentPrice;
+    p.price = priceValue;
+    p.pausedPeriods = Array.isArray(p.pausedPeriods) ? p.pausedPeriods : [];
+    savedPerson = p;
+
+    if (previousActivePause && status !== "PAUSED") {
+      await restorePauseCalendarEvents(previousActivePause);
+      previousActivePause.canceledAt = new Date().toISOString();
+      previousActivePause.updatedAt = previousActivePause.canceledAt;
+    } else if (previousActivePause && pausePeriod) {
+      if (isSamePausePeriod(previousActivePause, pausePeriod)) {
+        updatePausePeriod(previousActivePause, pausePeriod);
+      } else {
+        await restorePauseCalendarEvents(previousActivePause);
+        previousActivePause.canceledAt = new Date().toISOString();
+        previousActivePause.updatedAt = previousActivePause.canceledAt;
+        p.pausedPeriods.push(pausePeriod);
+        savedPausePeriod = pausePeriod;
+      }
+    } else if (pausePeriod) {
+      p.pausedPeriods = mergePausePeriod(p.pausedPeriods, pausePeriod);
+      savedPausePeriod = p.pausedPeriods.find(
+        (period) =>
+          !period.canceledAt &&
+          period.startDate === pausePeriod.startDate &&
+          period.endDate === pausePeriod.endDate,
+      );
+    }
+    if (prevName !== name) selectedForPrint.delete(p.id);
+    if (prevPrice !== currentPrice) snapshotCurrentMonthPrice(p, currentPrice);
   } else {
     const dup = db.data.find((p) => p.name === name);
     if (dup) {
@@ -630,27 +1252,45 @@ function saveEdit() {
       id: generateId(),
       name,
       active: isActive,
+      status,
       registeredAt: new Date().toISOString(),
-      currentPrice: price,
-      price,
+      clientType: group.clientType,
+      clientGroup: group.value,
+      billingType: group.billingType,
+      currentPrice,
+      price: priceValue,
+      memo: null,
+      pausedPeriods: pausePeriod ? [pausePeriod] : [],
       monthlyData: {},
     };
-    snapshotCurrentMonthPrice(newPerson, price);
+    snapshotCurrentMonthPrice(newPerson, currentPrice);
     db.data.push(newPerson);
+    savedPerson = newPerson;
+    savedPausePeriod = newPerson.pausedPeriods[0] || null;
+  }
+
+  if (savedPerson && savedPausePeriod) {
+    await applyPauseToCalendarEvents(savedPerson, savedPausePeriod);
   }
 
   const savedId = editingId;
   closeEditModal();
-  autosave();
-  renderAll();
+  await autosave();
+  if (selectedCalendarId && rawCalendarEvents.length > 0) {
+    processAndRenderEvents(rawCalendarEvents);
+  } else {
+    renderAll();
+  }
   showToast(isUpdate ? "수정되었습니다." : "등록되었습니다.");
   if (isUpdate && savedId) openPersonDetail(savedId);
+  showPauseEndRemindersIfNeeded();
 }
 
 function toggleActive(id, active) {
   const p = db.data.find((x) => x.id === id);
   if (p) {
     p.active = active;
+    p.status = active ? "ACTIVE" : "INACTIVE";
     autosave();
     renderPeopleList();
   }
@@ -683,7 +1323,14 @@ function openAddPersonWithName(name) {
   editModalComp.setTitle("내담자 등록");
   document.getElementById("btn-save-edit").textContent = "등록";
   document.getElementById("editName").value = name;
+  document.getElementById("editClientGroup").value = "PERSONAL";
   document.getElementById("editPrice").value = "";
+  document.getElementById("editActive").value = "true";
+  document.getElementById("editPauseStart").value = "";
+  document.getElementById("editPauseWeeks").value = "4";
+  document.getElementById("editPauseEnd").value = "";
+  document.getElementById("editPauseReason").value = "";
+  updateEditFormVisibility();
   editModalComp.open();
   document.getElementById("editPrice").focus();
 }
@@ -728,7 +1375,7 @@ function processCSV(file) {
           <div class="dup-item">
             <strong>${escapeHtml(d.name)}</strong>
             <span class="dup-price-change">
-              ${ex.price.toLocaleString()}
+              ${(ex.price ?? ex.currentPrice ?? 0).toLocaleString()}
               <span class="dup-arrow">→</span>
               ${d.price.toLocaleString()}
             </span>
@@ -769,9 +1416,15 @@ function applyCSV(data, update) {
         id: generateId(),
         name: row.name,
         active: true,
+        status: "ACTIVE",
         registeredAt: new Date().toISOString(),
+        clientType: "PERSONAL",
+        clientGroup: "PERSONAL",
+        billingType: "DIRECT",
         currentPrice: row.price,
         price: row.price,
+        memo: null,
+        pausedPeriods: [],
         monthlyData: {},
       };
       snapshotCurrentMonthPrice(newPerson, row.price);
@@ -804,9 +1457,22 @@ function buildConsultDateMap(events) {
   const dateMap = new Map();
 
   (events || []).forEach((event) => {
+    if (
+      isExcludedEvent(event?.summary, db.settings?.excludedEventKeywords || [])
+    ) {
+      return;
+    }
     const parsedSummary = parseCalendarSummary(event?.summary);
     const name = parsedSummary.baseName;
-    if (!name || parsedSummary.isExcludedFromBilling) return;
+    const dateStr = getEventDateString(event);
+    const dbPerson = db.data.find((p) => p.name === name);
+    if (
+      !name ||
+      parsedSummary.isExcludedFromBilling ||
+      isDateInPausedPeriods(dateStr, dbPerson?.pausedPeriods)
+    ) {
+      return;
+    }
 
     const startTimeStr = event?.start?.dateTime || event?.start?.date;
     const eventDate = parseDateLike(startTimeStr);
@@ -840,7 +1506,7 @@ function formatConsultRange({ count, firstDate, lastDate }) {
   const formatMonthDay = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일`;
 
   if (!start) return "";
-  if (visitCount <= 1 || !end) {
+  if (visitCount <= 1 || !end || start.getTime() === end.getTime()) {
     return formatMonthDay(start);
   }
   return `${formatMonthDay(start)} ~ ${formatMonthDay(end)}`;
@@ -879,7 +1545,9 @@ async function waitForPrintImages(container) {
   await Promise.all(images.map((img) => waitForImageLoad(img)));
 }
 
-function renderInvoices(entries) {
+function renderInvoices(entries, yearMonthOverride) {
+  const invoiceYear = yearMonthOverride?.year ?? monthViewYear;
+  const invoiceMonth = yearMonthOverride?.month ?? monthViewMonth;
   const logoSrc = getLogoSrc();
   const pages = [];
 
@@ -913,7 +1581,7 @@ function renderInvoices(entries) {
             <span class="invoice-recipient-name">${escapeHtml(p.name)}</span><span class="invoice-recipient-label">귀하</span>
           </span>
         </div>
-        <div class="invoice-intro">${monthViewYear}년 ${monthViewMonth}월 상담료는 아래와 같습니다.</div>
+        <div class="invoice-intro">${invoiceYear}년 ${invoiceMonth}월 상담료는 아래와 같습니다.</div>
         <table class="invoice-detail-table">
           <tr><td>${consultRange}</td></tr>
           <tr><td>${count}회기 X ${unitPrice.toLocaleString()}원</td></tr>
@@ -1049,6 +1717,109 @@ async function printInvoices() {
     db.printHistory = db.printHistory.slice(0, 10);
     autosave();
     showToast(`${printCount}명 인쇄 완료 · 이력 누적 저장됨`);
+  };
+
+  window.addEventListener("afterprint", handleAfterPrint);
+  window.print();
+}
+
+// ════════════════════════════
+//  Manual invoice
+// ════════════════════════════
+function addManualInvoiceRow() {
+  manualInvoiceRows.push({
+    rowId: ++manualInvoiceRowSeq,
+    clientId: "",
+    count: "",
+    lastDate: "",
+    price: "",
+  });
+  renderManualInvoiceRows();
+  renderManualInvoicePreview();
+}
+
+function removeManualInvoiceRow(rowId) {
+  manualInvoiceRows = manualInvoiceRows.filter(
+    (r) => String(r.rowId) !== String(rowId),
+  );
+  if (manualInvoiceRows.length === 0) addManualInvoiceRow();
+  renderManualInvoiceRows();
+  renderManualInvoicePreview();
+}
+
+function updateManualInvoiceRowField(rowId, field, value) {
+  const row = manualInvoiceRows.find((r) => String(r.rowId) === String(rowId));
+  if (!row) return;
+  row[field] = value;
+  if (field === "clientId") {
+    const client = db.data.find((p) => String(p.id) === String(value));
+    row.price = client ? client.currentPrice ?? client.price ?? 0 : "";
+  }
+  renderManualInvoiceRows();
+  renderManualInvoicePreview();
+}
+
+async function issueManualInvoice() {
+  const rows = manualInvoiceRows.filter(
+    (r) => r.clientId || r.count || r.lastDate,
+  );
+  if (rows.length === 0) {
+    showToast("청구인원을 추가해주세요.");
+    return;
+  }
+  const invalidRows = rows.filter(
+    (r) =>
+      !r.clientId ||
+      !r.count ||
+      Number(r.count) <= 0 ||
+      !r.lastDate ||
+      Number(r.lastDate) < 1 ||
+      Number(r.lastDate) > 31,
+  );
+  if (invalidRows.length > 0) {
+    showToast("내담자, 회기, 마지막 상담일을 모두 입력해주세요.");
+    return;
+  }
+
+  const { year, month } = readManualInvoiceYearMonth();
+  const entries = rows.map((row) => {
+    const client = db.data.find((p) => String(p.id) === String(row.clientId));
+    return {
+      name: client ? client.name : "",
+      price: Number(row.price) || 0,
+      count: Number(row.count) || 0,
+      lastDate: buildManualInvoiceDateStr(year, month, row.lastDate),
+    };
+  });
+
+  const printArea = document.getElementById("print-area");
+  printArea.innerHTML = renderInvoices(entries, { year, month });
+  await waitForPrintImages(printArea);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  const pendingHistEntry = {
+    id: "hist_" + Date.now(),
+    year,
+    month,
+    printedAt: new Date().toISOString(),
+    entries: entries.map((e) => ({
+      name: e.name,
+      price: e.price,
+      count: e.count,
+      total: e.price * e.count,
+      firstDate: null,
+      lastDate: e.lastDate,
+    })),
+  };
+  const printCount = entries.length;
+
+  const handleAfterPrint = () => {
+    window.removeEventListener("afterprint", handleAfterPrint);
+    db.printHistory.unshift(pendingHistEntry);
+    db.printHistory = db.printHistory.slice(0, 10);
+    autosave();
+    renderHistory();
+    showToast(`${printCount}명 발행 완료 · 이력 누적 저장됨`);
   };
 
   window.addEventListener("afterprint", handleAfterPrint);
@@ -1274,6 +2045,57 @@ function closeCalendarActionsMenu() {
   trigger.setAttribute("aria-expanded", "false");
 }
 
+function renderExcludedKeywords() {
+  const list = document.getElementById("excludedKeywordList");
+  if (!list) return;
+  const keywords = db.settings?.excludedEventKeywords || [];
+  if (keywords.length === 0) {
+    list.innerHTML = `<span class="excluded-keyword-empty">등록된 제외 키워드가 없습니다.</span>`;
+    return;
+  }
+  list.innerHTML = keywords
+    .map(
+      (keyword, idx) => `
+      <button
+        class="excluded-keyword-chip"
+        data-action="remove-excluded-keyword"
+        data-idx="${idx}"
+        title="삭제"
+      >
+        ${escapeHtml(keyword)}
+        <span aria-hidden="true">×</span>
+      </button>`,
+    )
+    .join("");
+}
+
+function addExcludedKeyword() {
+  const input = document.getElementById("excludedKeywordInput");
+  const keyword = input.value.trim();
+  if (!keyword) {
+    showToast("제외할 키워드를 입력하세요.");
+    return;
+  }
+  db.settings = normalizeSettings(db.settings);
+  if (db.settings.excludedEventKeywords.includes(keyword)) {
+    showToast("이미 등록된 키워드입니다.");
+    return;
+  }
+  db.settings.excludedEventKeywords.push(keyword);
+  input.value = "";
+  scheduleAutosave();
+  renderExcludedKeywords();
+  if (rawCalendarEvents.length > 0) processAndRenderEvents(rawCalendarEvents);
+}
+
+function removeExcludedKeyword(idx) {
+  db.settings = normalizeSettings(db.settings);
+  db.settings.excludedEventKeywords.splice(idx, 1);
+  scheduleAutosave();
+  renderExcludedKeywords();
+  if (rawCalendarEvents.length > 0) processAndRenderEvents(rawCalendarEvents);
+}
+
 async function fetchCalendarEvents() {
   if (!selectedCalendarId) {
     console.error("[fetchCalendarEvents]", "캘린더가 선택되지 않음");
@@ -1303,9 +2125,9 @@ function processAndRenderEvents(events) {
   if (!events || events.length === 0) {
     const monthKey = getMonthKey(monthViewYear, monthViewMonth);
     db.data.forEach((person) => {
-      const basePrice = Number.isFinite(+person.currentPrice)
-        ? +person.currentPrice
-        : +person.price || 0;
+      const basePrice = isDirectBillingPerson(person)
+        ? (person.currentPrice ?? person.price ?? null)
+        : null;
       person.currentPrice = basePrice;
       person.price = basePrice;
       if (!person.monthlyData || typeof person.monthlyData !== "object") {
@@ -1319,25 +2141,22 @@ function processAndRenderEvents(events) {
       person.monthlyData[monthKey].noShowCount = 0;
       person.monthlyData[monthKey].sameDayCancelCount = 0;
       person.monthlyData[monthKey].advanceCancelCount = 0;
+      person.monthlyData[monthKey].pauseCount = 0;
       person.monthlyData[monthKey].noShowDates = [];
       person.monthlyData[monthKey].sameDayCancelDates = [];
       person.monthlyData[monthKey].advanceCancelDates = [];
+      person.monthlyData[monthKey].pauseDates = [];
       person.monthlyData[monthKey].totalPrice = 0;
       person.monthlyData[monthKey].lastVisitDate = null;
     });
 
-    document.getElementById("peopleList").innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon"><svg class="icon"><use href="icons.svg#icon-calendar"/></svg></div>
-        ${monthViewYear}년 ${monthViewMonth}월 구글 캘린더 일정이 없습니다.
-      </div>`;
-    setSelectedCountLabels(0);
+    selectedForPrint.clear();
     calendarDisplayItems = [];
     unmatchedItemsList = [];
     invalidStatusItemsList = [];
     renderCalendarGrid([]);
     document.getElementById("month-data-section").style.display = "block";
-    updatePrintButtonState();
+    renderCalendarList([], []);
     return;
   }
 
@@ -1346,9 +2165,9 @@ function processAndRenderEvents(events) {
   const monthKey = getMonthKey(monthViewYear, monthViewMonth);
 
   db.data.forEach((person) => {
-    const basePrice = Number.isFinite(+person.currentPrice)
-      ? +person.currentPrice
-      : +person.price || 0;
+    const basePrice = isDirectBillingPerson(person)
+      ? (person.currentPrice ?? person.price ?? null)
+      : null;
     person.currentPrice = basePrice;
     person.price = basePrice;
     if (!person.monthlyData || typeof person.monthlyData !== "object") {
@@ -1362,20 +2181,32 @@ function processAndRenderEvents(events) {
     person.monthlyData[monthKey].noShowCount = 0;
     person.monthlyData[monthKey].sameDayCancelCount = 0;
     person.monthlyData[monthKey].advanceCancelCount = 0;
+    person.monthlyData[monthKey].pauseCount = 0;
     person.monthlyData[monthKey].noShowDates = [];
     person.monthlyData[monthKey].sameDayCancelDates = [];
     person.monthlyData[monthKey].advanceCancelDates = [];
+    person.monthlyData[monthKey].pauseDates = [];
     person.monthlyData[monthKey].totalPrice = 0;
     person.monthlyData[monthKey].lastVisitDate = null;
   });
 
   events.forEach((event) => {
+    if (
+      isExcludedEvent(event.summary, db.settings?.excludedEventKeywords || [])
+    ) {
+      return;
+    }
     const parsed = parseCalendarSummary(event.summary);
     const name = parsed.baseName;
     if (!name) return;
 
     const startTimeStr = event.start.dateTime || event.start.date;
     const eventDate = new Date(startTimeStr);
+    const dateStr = getEventDateString(event);
+    const dbPersonForEvent = db.data.find((p) => p.name === name);
+    const isPauseEvent =
+      parsed.isPause ||
+      isDateInPausedPeriods(dateStr, dbPersonForEvent?.pausedPeriods);
     if (!grouped[name]) {
       grouped[name] = {
         count: 0,
@@ -1384,9 +2215,11 @@ function processAndRenderEvents(events) {
         noShowCount: 0,
         sameDayCancelCount: 0,
         advanceCancelCount: 0,
+        pauseCount: 0,
         noShowDates: [],
         sameDayCancelDates: [],
         advanceCancelDates: [],
+        pauseDates: [],
       };
     }
 
@@ -1406,9 +2239,6 @@ function processAndRenderEvents(events) {
       invalidGrouped[invalidKey].eventIds.push(event.id);
     }
 
-    const dateStr = event.start?.date
-      ? event.start.date
-      : String(event.start?.dateTime || "").slice(0, 10);
     if (parsed.suffix === "노쇼") {
       grouped[name].noShowCount += 1;
       grouped[name].noShowDates.push(dateStr);
@@ -1421,12 +2251,16 @@ function processAndRenderEvents(events) {
       grouped[name].advanceCancelCount += 1;
       grouped[name].advanceCancelDates.push(dateStr);
     }
+    if (isPauseEvent) {
+      grouped[name].pauseCount += 1;
+      grouped[name].pauseDates.push(dateStr);
+    }
 
-    if (!parsed.isExcludedFromBilling) {
+    if (!parsed.isExcludedFromBilling && !isPauseEvent) {
       grouped[name].count += 1;
     }
 
-    if (!parsed.isExcludedFromLastDate) {
+    if (!parsed.isExcludedFromLastDate && !isPauseEvent) {
       if (!grouped[name].lastDate || eventDate > grouped[name].lastDate) {
         grouped[name].lastDate = eventDate;
       }
@@ -1434,6 +2268,7 @@ function processAndRenderEvents(events) {
   });
 
   const displayItems = [];
+  const directDisplayItems = [];
   const newUnmatched = [];
   selectedForPrint.clear();
 
@@ -1450,26 +2285,39 @@ function processAndRenderEvents(events) {
         noShowCount: data.noShowCount,
         sameDayCancelCount: data.sameDayCancelCount,
         advanceCancelCount: data.advanceCancelCount,
+        pauseCount: data.pauseCount,
         noShowDates: data.noShowDates,
         sameDayCancelDates: data.sameDayCancelDates,
         advanceCancelDates: data.advanceCancelDates,
-        price: personPrice,
-        totalPrice: personPrice * data.count,
+        pauseDates: data.pauseDates,
+        price: isDirectBillingPerson(dbPerson) ? personPrice : null,
+        totalPrice: isDirectBillingPerson(dbPerson)
+          ? personPrice * data.count
+          : 0,
         lastVisitDate:
           data.lastDate instanceof Date ? data.lastDate.toISOString() : null,
         paidAt: prevMonthEntry.paidAt || null,
       };
-      displayItems.push({
-        id: dbPerson.id,
-        name,
-        count: data.count,
-        price: personPrice,
-        lastDate: data.lastDate,
-        noShowCount: data.noShowCount,
-        sameDayCancelCount: data.sameDayCancelCount,
-        advanceCancelCount: data.advanceCancelCount,
-      });
-      selectedForPrint.add(dbPerson.id);
+      if (data.count > 0) {
+        const displayItem = {
+          id: dbPerson.id,
+          name,
+          count: data.count,
+          price: isDirectBillingPerson(dbPerson) ? personPrice : 0,
+          clientGroup: dbPerson.clientGroup,
+          billingType: dbPerson.billingType,
+          lastDate: data.lastDate,
+          noShowCount: data.noShowCount,
+          sameDayCancelCount: data.sameDayCancelCount,
+          advanceCancelCount: data.advanceCancelCount,
+          pauseCount: data.pauseCount,
+        };
+        displayItems.push(displayItem);
+        if (isDirectBillingPerson(dbPerson)) {
+          directDisplayItems.push(displayItem);
+          selectedForPrint.add(dbPerson.id);
+        }
+      }
     } else if (!dbPerson) {
       newUnmatched.push({
         name,
@@ -1487,10 +2335,10 @@ function processAndRenderEvents(events) {
   unmatchedItemsList = newUnmatched;
   invalidStatusItemsList = Object.values(invalidGrouped);
   renderCalendarGrid(events);
-  renderCalendarList(displayItems, newUnmatched);
   document.getElementById("month-data-section").style.display = "block";
-  syncPaymentEntries(displayItems);
-  autosave();
+  renderCalendarList(displayItems, newUnmatched);
+  syncPaymentEntries(directDisplayItems);
+  scheduleAutosave();
 }
 
 // ════════════════════════════
@@ -1500,11 +2348,21 @@ function openCalendarEventModal(payload = null) {
   const titleEl = calendarEventModalComp.getTitleEl();
   const saveBtn = document.getElementById("btn-save-cal-event");
   const nameSelect = document.getElementById("calEventName");
+  const statusSelect = document.getElementById("calEventStatus");
+  const dateInput = document.getElementById("calEventDate");
+  const timeInput = document.getElementById("calEventTime");
+  const unregisteredNotice = document.getElementById(
+    "calEventUnregisteredNotice",
+  );
+  const addUnmatchedBtn = document.getElementById(
+    "btn-open-add-unmatched-from-cal",
+  );
 
   // 활성 내담자 목록으로 select 채우기
   const activeClients = db.data.filter((p) => p.active !== false);
   const targetName = payload?.baseName || "";
   const inDb = activeClients.some((p) => p.name === targetName);
+  const isUnregisteredEdit = !!payload?.eventId && !!targetName && !inDb;
 
   let options = '<option value="">내담자 선택</option>';
   // 편집 모드에서 DB에 없는 이름이면 별도 옵션으로 추가
@@ -1512,38 +2370,55 @@ function openCalendarEventModal(payload = null) {
     options += `<option value="${escapeHtml(targetName)}">${escapeHtml(targetName)} (미등록)</option>`;
   }
   options += activeClients
-    .map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`)
+    .map(
+      (p) =>
+        `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`,
+    )
     .join("");
   nameSelect.innerHTML = options;
   nameSelect.value = targetName;
+  if (unregisteredNotice) {
+    unregisteredNotice.style.display = isUnregisteredEdit ? "flex" : "none";
+  }
+  if (addUnmatchedBtn) addUnmatchedBtn.dataset.name = targetName;
 
   if (payload && payload.eventId) {
     editingCalendarEventId = payload.eventId;
-    document.getElementById("calEventStatus").value = payload.eventStatus || "";
-    document.getElementById("calEventDate").value =
+    statusSelect.value = payload.eventStatus || "";
+    dateInput.value =
       payload.date ||
       `${YEAR}-${String(MONTH).padStart(2, "0")}-${String(DAY).padStart(2, "0")}`;
-    document.getElementById("calEventTime").value = payload.time || "10:00";
+    timeInput.value = payload.time || "10:00";
     if (titleEl)
       titleEl.innerHTML =
         '<svg class="icon"><use href="icons.svg#icon-calendar" /></svg> 캘린더 일정 변경';
     if (saveBtn) saveBtn.textContent = "변경 저장";
   } else {
     editingCalendarEventId = null;
-    document.getElementById("calEventStatus").value = "";
+    statusSelect.value = "";
     const lastDateInViewMonth = new Date(
       monthViewYear,
       monthViewMonth,
       0,
     ).getDate();
     const safeDay = Math.min(DAY, lastDateInViewMonth);
-    document.getElementById("calEventDate").value =
+    dateInput.value =
       `${monthViewYear}-${String(monthViewMonth).padStart(2, "0")}-${String(safeDay).padStart(2, "0")}`;
-    document.getElementById("calEventTime").value = "10:00";
+    timeInput.value = "10:00";
     if (titleEl)
       titleEl.innerHTML =
         '<svg class="icon"><use href="icons.svg#icon-calendar" /></svg> 캘린더 일정 추가';
     if (saveBtn) saveBtn.textContent = "추가";
+  }
+
+  [nameSelect, statusSelect, dateInput, timeInput].forEach((el) => {
+    if (el) el.disabled = isUnregisteredEdit;
+  });
+  if (saveBtn) {
+    saveBtn.disabled = isUnregisteredEdit;
+    saveBtn.title = isUnregisteredEdit
+      ? "DB에 등록되지 않은 일정은 먼저 내담자로 등록해야 합니다."
+      : "";
   }
 
   calendarEventModalComp.open();
@@ -1560,7 +2435,14 @@ async function saveCalendarEvent() {
   const time = document.getElementById("calEventTime").value;
 
   if (!baseName) {
-    showToast("이름을 입력하세요.");
+    showToast("항목을 선택해주세요.");
+    return;
+  }
+  if (
+    editingCalendarEventId &&
+    !db.data.some((p) => p.active !== false && p.name === baseName)
+  ) {
+    showToast("미등록 일정은 먼저 DB에 등록해주세요.");
     return;
   }
   if (!date) {
@@ -1599,6 +2481,19 @@ async function saveCalendarEvent() {
   } catch (err) {
     handleApiError(err, `일정 ${isEditMode ? "변경" : "추가"}에 실패했습니다.`);
   }
+}
+
+function openAddUnmatchedFromCalendarEvent() {
+  const targetName =
+    document.getElementById("btn-open-add-unmatched-from-cal")?.dataset.name ||
+    "";
+  const idx = unmatchedItemsList.findIndex((item) => item.name === targetName);
+  if (idx < 0) {
+    showToast("연동되지 않은 항목 목록에서 먼저 확인해주세요.");
+    return;
+  }
+  closeCalendarEventModal();
+  openAddUnmatchedModal(idx);
 }
 
 async function deleteCalendarEvent(eventId) {
@@ -1640,17 +2535,28 @@ function saveAddUnmatched() {
     id: generateId(),
     name: item.name,
     active: true,
+    status: "ACTIVE",
     registeredAt: new Date().toISOString(),
+    clientType: "PERSONAL",
+    clientGroup: "PERSONAL",
+    billingType: "DIRECT",
     currentPrice: price,
     price,
+    memo: null,
+    pausedPeriods: [],
     monthlyData: {},
   };
   db.data.push(newPerson);
   autosave();
   closeAddUnmatchedModal();
-  closeUnmatchedModal();
   showToast(`"${item.name}" DB에 추가되었습니다.`);
   processAndRenderEvents(rawCalendarEvents);
+  renderDataTable();
+  if (unmatchedItemsList.length > 0) {
+    openUnmatchedModal();
+  } else {
+    closeUnmatchedModal();
+  }
 }
 
 function openMatchModal(idx) {
@@ -1789,6 +2695,7 @@ function syncPaymentEntries(toPrint) {
     const advanceCancelCount = Number.isFinite(+p.advanceCancelCount)
       ? +p.advanceCancelCount
       : 0;
+    const pauseCount = Number.isFinite(+p.pauseCount) ? +p.pauseCount : 0;
     const visitCount = Math.max(
       0,
       billedCount - noShowCount - sameDayCancelCount,
@@ -1804,6 +2711,7 @@ function syncPaymentEntries(toPrint) {
       noShowCount,
       sameDayCancelCount,
       advanceCancelCount,
+      pauseCount,
       lastDate: p.lastDate instanceof Date ? p.lastDate.toISOString() : null,
       total: p.price * billedCount,
       paidAt:
@@ -1823,6 +2731,7 @@ function syncPaymentEntries(toPrint) {
         entry.noShowCount = ne.noShowCount;
         entry.sameDayCancelCount = ne.sameDayCancelCount;
         entry.advanceCancelCount = ne.advanceCancelCount;
+        entry.pauseCount = ne.pauseCount;
         entry.lastDate = ne.lastDate;
         entry.price = ne.price;
         entry.total = ne.total;
@@ -1907,7 +2816,6 @@ function nextPaymentMonth() {
   renderPaymentHistory(paymentViewYear, paymentViewMonth);
 }
 
-
 // ════════════════════════════
 //  Person Detail Panel
 // ════════════════════════════
@@ -1928,6 +2836,35 @@ function openPersonDetail(id) {
 
 function closePersonDetail() {
   personDetailModalComp.close();
+}
+
+function startDetailMemoEdit() {
+  if (!_detailPersonId) return;
+  const person = db.data.find((p) => p.id === _detailPersonId);
+  const section = document.getElementById("detailMemoSection");
+  if (!person || !section) return;
+  section.innerHTML = buildDetailMemoEditHtml(person);
+  document.getElementById("detailMemoInput")?.focus();
+}
+
+function cancelDetailMemoEdit() {
+  if (!_detailPersonId) return;
+  const person = db.data.find((p) => p.id === _detailPersonId);
+  const section = document.getElementById("detailMemoSection");
+  if (!person || !section) return;
+  section.outerHTML = buildDetailMemoViewHtml(person);
+}
+
+async function saveDetailMemo() {
+  if (!_detailPersonId) return;
+  const person = db.data.find((p) => p.id === _detailPersonId);
+  const section = document.getElementById("detailMemoSection");
+  const input = document.getElementById("detailMemoInput");
+  if (!person || !section || !input) return;
+  person.memo = input.value.trim() || null;
+  await autosave();
+  section.outerHTML = buildDetailMemoViewHtml(person);
+  showToast("메모가 저장되었습니다.");
 }
 
 // ── Detail table component ──────────────────────────────────────────────────
@@ -1990,7 +2927,7 @@ function _getPriceHistory(person) {
 }
 
 function _buildYearlyData(person) {
-  // Returns [{year, visitCount, noShowCount, sameDayCancelCount, advanceCancelCount, totalPrice}]
+  // Returns [{year, visitCount, noShowCount, sameDayCancelCount, advanceCancelCount, pauseCount, totalPrice, months}]
   // sorted descending by year
   const byYear = {};
   for (const [key, entry] of Object.entries(person.monthlyData || {})) {
@@ -2002,16 +2939,111 @@ function _buildYearlyData(person) {
         noShowCount: 0,
         sameDayCancelCount: 0,
         advanceCancelCount: 0,
+        pauseCount: 0,
         totalPrice: 0,
+        months: [],
       };
     }
-    byYear[y].visitCount += +entry.visitCount || 0;
-    byYear[y].noShowCount += +entry.noShowCount || 0;
-    byYear[y].sameDayCancelCount += +entry.sameDayCancelCount || 0;
-    byYear[y].advanceCancelCount += +entry.advanceCancelCount || 0;
-    byYear[y].totalPrice += +entry.totalPrice || 0;
+    const monthData = {
+      monthKey: key,
+      visitCount: +entry.visitCount || 0,
+      noShowCount: +entry.noShowCount || 0,
+      sameDayCancelCount: +entry.sameDayCancelCount || 0,
+      advanceCancelCount: +entry.advanceCancelCount || 0,
+      pauseCount: +entry.pauseCount || 0,
+      totalPrice: +entry.totalPrice || 0,
+    };
+    byYear[y].visitCount += monthData.visitCount;
+    byYear[y].noShowCount += monthData.noShowCount;
+    byYear[y].sameDayCancelCount += monthData.sameDayCancelCount;
+    byYear[y].advanceCancelCount += monthData.advanceCancelCount;
+    byYear[y].pauseCount += monthData.pauseCount;
+    byYear[y].totalPrice += monthData.totalPrice;
+    byYear[y].months.push(monthData);
   }
-  return Object.values(byYear).sort((a, b) => b.year.localeCompare(a.year));
+  return Object.values(byYear)
+    .map((yearData) => ({
+      ...yearData,
+      months: yearData.months.sort((a, b) =>
+        b.monthKey.localeCompare(a.monthKey),
+      ),
+    }))
+    .sort((a, b) => b.year.localeCompare(a.year));
+}
+
+function _buildYearlyVisitHtml(person) {
+  const yearlyData = _buildYearlyData(person);
+  const chevron = `<svg class="detail-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+  if (yearlyData.length === 0) {
+    return `<div class="detail-section">
+      <div class="detail-section-title">방문 현황</div>
+      <p class="detail-empty">방문 기록이 없습니다.</p>
+    </div>`;
+  }
+
+  const monthRows = (months) =>
+    months
+      .map((month) => `
+          <tr>
+            <td>${_fmtMonthKey(month.monthKey)}</td>
+            <td style="text-align:right">${month.visitCount || "—"}</td>
+            <td style="text-align:right">${month.noShowCount || "—"}</td>
+            <td style="text-align:right">${month.advanceCancelCount || "—"}</td>
+            <td style="text-align:right">${month.sameDayCancelCount || "—"}</td>
+            <td style="text-align:right">${month.pauseCount || "—"}</td>
+            <td style="text-align:right">${month.totalPrice ? formatCurrency(month.totalPrice) : "—"}</td>
+          </tr>`)
+      .join("");
+
+  return `<div class="detail-section">
+    <div class="detail-section-title">방문 현황</div>
+    <div class="detail-year-list">
+      ${yearlyData
+        .map((yearData) => `
+            <details class="detail-year-item">
+              <summary>
+                <span class="detail-year-summary-left">
+                  ${chevron}<strong>${yearData.year}년</strong>
+                </span>
+                <span class="year-stat"><span class="year-stat-label">방문</span> ${yearData.visitCount}회</span>
+                <span class="year-stat-sep">|</span>
+                <span class="year-stat"><span class="year-stat-label">노쇼</span> ${yearData.noShowCount}회</span>
+                <span class="year-stat-sep">|</span>
+                <span class="year-stat"><span class="year-stat-label">사전취소</span> ${yearData.advanceCancelCount}회</span>
+                <span class="year-stat-sep">|</span>
+                <span class="year-stat"><span class="year-stat-label">당일취소</span> ${yearData.sameDayCancelCount}회</span>
+                <span class="year-stat-sep">|</span>
+                <span class="year-stat"><span class="year-stat-label">휴진</span> ${yearData.pauseCount}회</span>
+              </summary>
+              <table class="detail-table detail-month-table">
+                <thead>
+                  <tr>
+                    <th>월</th>
+                    <th style="text-align:right">방문</th>
+                    <th style="text-align:right">노쇼</th>
+                    <th style="text-align:right">사전취소</th>
+                    <th style="text-align:right">당일취소</th>
+                    <th style="text-align:right">휴진</th>
+                    <th style="text-align:right">총청구횟수</th>
+                  </tr>
+                </thead>
+                <tbody>${monthRows(yearData.months)}</tbody>
+                <tfoot>
+                  <tr class="detail-month-total">
+                    <td>합계</td>
+                    <td style="text-align:right">${yearData.visitCount || "—"}</td>
+                    <td style="text-align:right">${yearData.noShowCount || "—"}</td>
+                    <td style="text-align:right">${yearData.advanceCancelCount || "—"}</td>
+                    <td style="text-align:right">${yearData.sameDayCancelCount || "—"}</td>
+                    <td style="text-align:right">${yearData.pauseCount || "—"}</td>
+                    <td style="text-align:right">${yearData.totalPrice ? formatCurrency(yearData.totalPrice) : "—"}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </details>`)
+        .join("")}
+    </div>
+  </div>`;
 }
 
 function buildPersonDetailHtml(person) {
@@ -2026,51 +3058,42 @@ function buildPersonDetailHtml(person) {
   // Status badge
   const statusBadge = person.deleted
     ? `<span class="badge badge-muted">삭제됨</span>`
-    : person.active !== false
-      ? `<span class="badge badge-active">활성</span>`
-      : `<span class="badge badge-inactive">비활성</span>`;
+    : person.status === "PAUSED"
+      ? `<span class="badge badge-paused">휴진</span>`
+      : person.active !== false
+        ? `<span class="badge badge-active">활성</span>`
+        : `<span class="badge badge-inactive">비활성</span>`;
+  const groupLabel = CLIENT_GROUP_LABELS[person.clientGroup] || "개인";
+  const priceLabel = isDirectBillingPerson(person)
+    ? formatCurrency(person.currentPrice)
+    : "직접 청구 아님";
 
   // Meta grid
   const metaHtml = `
     <div class="detail-meta">
       <div class="detail-meta-item">
-        <span class="detail-label">등록일</span>
-        <span>${registeredAt}</span>
-      </div>
-      <div class="detail-meta-item">
         <span class="detail-label">상태</span>
         <span>${statusBadge}</span>
       </div>
       <div class="detail-meta-item">
+        <span class="detail-label">구분</span>
+        <span>${escapeHtml(groupLabel)}</span>
+      </div>
+      <div class="detail-meta-item">
         <span class="detail-label">현재 상담료</span>
-        <span>${formatCurrency(person.currentPrice)}</span>
+        <span>${priceLabel}</span>
       </div>
     </div>`;
 
-  // Yearly summary table
-  const yearlyData = _buildYearlyData(person);
-  const yearlyHtml = _detailTable(
-    "연도별 방문 현황",
-    [
-      { label: "연도" },
-      { label: "방문", align: "right" },
-      { label: "노쇼", align: "right" },
-      { label: "취소", align: "right" },
-      { label: "합계금액", align: "right" },
-    ],
-    yearlyData.map((d) => [
-      `${d.year}년`,
-      `${d.visitCount}회`,
-      d.noShowCount > 0
-        ? `<span class="text-danger">${d.noShowCount}회</span>`
-        : "—",
-      d.sameDayCancelCount + d.advanceCancelCount > 0
-        ? `${d.sameDayCancelCount + d.advanceCancelCount}회`
-        : "—",
-      d.totalPrice > 0 ? formatCurrency(d.totalPrice) : "—",
-    ]),
-    "방문 기록이 없습니다.",
-  );
+  const registeredAtHtml = `
+    <div class="detail-registered-at">
+      <span class="detail-label">등록일</span>
+      <span>${registeredAt}</span>
+    </div>`;
+
+  const memoHtml = buildDetailMemoViewHtml(person);
+
+  const yearlyHtml = _buildYearlyVisitHtml(person);
 
   // Price history table
   const priceHistory = _getPriceHistory(person);
@@ -2087,13 +3110,64 @@ function buildPersonDetailHtml(person) {
   // No-show / cancel date tables
   const incidentHtml = _buildIncidentHtml(person);
 
-  return `${metaHtml}${yearlyHtml}${priceHtml}${incidentHtml}`;
+  const pauseHtml = _buildPauseHistoryHtml(person);
+
+  return `${metaHtml}${memoHtml}${yearlyHtml}${pauseHtml}${priceHtml}${incidentHtml}${registeredAtHtml}`;
+}
+
+function buildDetailMemoViewHtml(person) {
+  return `<div class="detail-section detail-memo-section" id="detailMemoSection">
+    <div class="detail-section-title detail-section-title-row">
+      <span>메모</span>
+      <button class="btn btn-outlined btn-primary btn-sm" data-memo-action="edit">수정</button>
+    </div>
+    <div class="detail-memo">${person.memo ? escapeHtml(person.memo).replaceAll("\n", "<br>") : "등록된 메모가 없습니다."}</div>
+  </div>`;
+}
+
+function buildDetailMemoEditHtml(person) {
+  return `<div class="detail-section-title detail-section-title-row">
+      <span>메모</span>
+      <div class="detail-memo-actions">
+        <button class="btn btn-outlined btn-sm" data-memo-action="cancel">취소</button>
+        <button class="btn btn-filled btn-primary btn-sm" data-memo-action="save">저장</button>
+      </div>
+    </div>
+    <textarea class="form-input detail-memo-input" id="detailMemoInput" rows="5">${escapeHtml(person.memo || "")}</textarea>`;
+}
+
+function _buildPauseHistoryHtml(person) {
+  const periods = (person.pausedPeriods || [])
+    .filter((period) => !period.canceledAt)
+    .sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""));
+  return _detailTable(
+    "휴진 이력",
+    [
+      { label: "기간" },
+      { label: "주수", align: "right" },
+      { label: "사유" },
+      { label: "", align: "right" },
+    ],
+    periods.map((period) => [
+      `${period.startDate || "—"} ~ ${period.endDate || "—"}`,
+      period.weeks ? `${period.weeks}주` : "—",
+      escapeHtml(period.reason || "—"),
+      `<button
+        class="btn btn-outlined btn-error btn-sm"
+        data-action="cancel-pause-period"
+        data-person-id="${person.id}"
+        data-period-id="${period.id}"
+      >휴진 취소</button>`,
+    ]),
+    "휴진 이력이 없습니다.",
+  );
 }
 
 function _buildIncidentHtml(person) {
   // Collect all dated incidents across all months
   const noShowDates = [];
   const cancelDates = [];
+  const pauseDates = [];
 
   for (const entry of Object.values(person.monthlyData || {})) {
     if (Array.isArray(entry.noShowDates))
@@ -2106,12 +3180,19 @@ function _buildIncidentHtml(person) {
       cancelDates.push(
         ...entry.advanceCancelDates.map((d) => ({ date: d, type: "사전취소" })),
       );
+    if (Array.isArray(entry.pauseDates)) pauseDates.push(...entry.pauseDates);
   }
 
   noShowDates.sort((a, b) => b.localeCompare(a));
   cancelDates.sort((a, b) => b.date.localeCompare(a.date));
+  pauseDates.sort((a, b) => b.localeCompare(a));
 
-  if (noShowDates.length === 0 && cancelDates.length === 0) return "";
+  if (
+    noShowDates.length === 0 &&
+    cancelDates.length === 0 &&
+    pauseDates.length === 0
+  )
+    return "";
 
   const _fmtDate = (iso) => {
     const d = new Date(iso + "T00:00:00");
@@ -2119,17 +3200,23 @@ function _buildIncidentHtml(person) {
   };
 
   return [
-    noShowDates.length > 0 &&
+    // noShowDates.length > 0 &&
+    //   _detailTable(
+    //     `노쇼 이력 (${noShowDates.length}건)`,
+    //     [{ label: "날짜" }],
+    //     noShowDates.map((d) => [_fmtDate(d)]),
+    //   ),
+    // cancelDates.length > 0 &&
+    //   _detailTable(
+    //     `취소 이력 (${cancelDates.length}건)`,
+    //     [{ label: "날짜" }, { label: "구분" }],
+    //     cancelDates.map(({ date, type }) => [_fmtDate(date), type]),
+    //   ),
+    pauseDates.length > 0 &&
       _detailTable(
-        `노쇼 이력 (${noShowDates.length}건)`,
+        `휴진 회기 (${pauseDates.length}건)`,
         [{ label: "날짜" }],
-        noShowDates.map((d) => [_fmtDate(d)]),
-      ),
-    cancelDates.length > 0 &&
-      _detailTable(
-        `취소 이력 (${cancelDates.length}건)`,
-        [{ label: "날짜" }, { label: "구분" }],
-        cancelDates.map(({ date, type }) => [_fmtDate(date), type]),
+        pauseDates.map((d) => [_fmtDate(d)]),
       ),
   ]
     .filter(Boolean)

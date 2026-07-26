@@ -3,23 +3,87 @@
 // ════════════════════════════
 function renderAll() {
   renderPeopleList();
+  renderGroupFilterTabs();
   renderDataTable();
 }
 
 /* ── 이번 달 ── */
-function renderPeopleList() {
-  const active = db.data.filter((p) => p.active !== false && !p.deleted);
+function renderBillingGroupTabs() {
+  const container = document.getElementById("billingGroupTabs");
+  if (!container) return;
+  container.innerHTML = CLIENT_GROUP_OPTIONS.map(
+    (t) =>
+      `<button class="group-tab ${billingGroupFilter === t.value ? "active" : ""}"
+          data-action="filter-billing-group" data-group="${t.value}">${escapeHtml(t.label)}</button>`,
+  ).join("");
+}
 
-  active.forEach((p) => {
-    if (!selectedForPrint.has(p.id)) selectedForPrint.add(p.id);
-  });
-  const activeIds = new Set(active.map((p) => p.id));
-  [...selectedForPrint].forEach((id) => {
-    if (!activeIds.has(id)) selectedForPrint.delete(id);
-  });
+function renderPeopleList() {
+  renderBillingGroupTabs();
+
+  const isDirect = billingGroupFilter === "PERSONAL";
+  const printBar = document.querySelector(".print-bar");
+  const selectBtns =
+    document.getElementById("btn-select-all-cal")?.parentElement;
+  const monthDataVisible =
+    !!selectedCalendarId &&
+    document.getElementById("month-data-section")?.style.display !== "none";
+  const hasMonthCalendarData =
+    monthDataVisible && Array.isArray(calendarDisplayItems);
+
+  // 청구 관련 UI는 개인내담자 탭에서만 표시
+  if (printBar) printBar.style.display = isDirect ? "" : "none";
+  if (selectBtns) selectBtns.style.display = isDirect ? "" : "none";
+
+  const active = db.data.filter(
+    (p) =>
+      p.active !== false && !p.deleted && p.clientGroup === billingGroupFilter,
+  );
+
+  if (isDirect) {
+    active.forEach((p) => {
+      if (!hasMonthCalendarData && !selectedForPrint.has(p.id))
+        selectedForPrint.add(p.id);
+    });
+    const activeIds = new Set(active.map((p) => p.id));
+    [...selectedForPrint].forEach((id) => {
+      if (!activeIds.has(id)) selectedForPrint.delete(id);
+    });
+  }
 
   const container = document.getElementById("peopleList");
-  if (calendarDisplayItems && calendarDisplayItems.length > 0) return;
+
+  if (hasMonthCalendarData) {
+    const visibleItems = calendarDisplayItems.filter(
+      (p) => p.clientGroup === billingGroupFilter,
+    );
+    renderCalendarListItems(visibleItems, { isDirect });
+    return;
+  }
+
+  if (!isDirect) {
+    if (active.length === 0) {
+      container.classList.add("is-empty");
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon"><svg class="icon"><use href="icons.svg#icon-user"/></svg></div>
+          등록된 활성 인원이 없습니다.<br>
+          내담자 관리 탭에서 추가해주세요.
+        </div>`;
+    } else {
+      container.classList.remove("is-empty");
+      container.innerHTML = active
+        .map(
+          (p) => `
+          <div class="person-card person-card-readonly" id="card-${p.id}">
+            <div class="person-name">${escapeHtml(p.name)}</div>
+          </div>`,
+        )
+        .join("");
+    }
+    updateCount();
+    return;
+  }
 
   if (active.length === 0) {
     container.classList.add("is-empty");
@@ -33,25 +97,101 @@ function renderPeopleList() {
     return;
   }
   container.classList.remove("is-empty");
-
   container.innerHTML = active
     .map((p) => {
       const hasCount = p.count !== undefined && p.count !== null;
       const countDisplay = hasCount ? p.count : "?";
-      const totalDisplay = hasCount ? formatCurrency(p.price * p.count) : "-";
+      const price = p.currentPrice ?? p.price ?? 0;
+      const totalDisplay = hasCount ? formatCurrency(price * p.count) : "-";
       const checked = selectedForPrint.has(p.id);
       return `
       <div class="person-card ${checked ? "" : "excluded"}" id="card-${p.id}">
         <input type="checkbox" ${checked ? "checked" : ""}
           data-action="toggle-person" data-id="${p.id}">
         <div class="person-name">${escapeHtml(p.name)} 귀하</div>
-        <div class="person-formula">${formatCurrency(p.price)} × ${countDisplay}회</div>
+        <div class="person-formula">${formatCurrency(price)} × ${countDisplay}회</div>
         <div class="person-total">${totalDisplay}</div>
       </div>`;
     })
     .join("");
 
   updateCount();
+}
+
+function renderCalendarListItems(displayItems, { isDirect }) {
+  const container = document.getElementById("peopleList");
+  document.getElementById("matchedCount").textContent = displayItems.length;
+
+  if (!isDirect) {
+    setSelectedCountLabels(0);
+    updatePrintButtonState();
+  }
+
+  if (displayItems.length === 0) {
+    container.classList.add("is-empty");
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon"><svg class="icon"><use href="icons.svg#icon-user"/></svg></div>
+        현재 월에 해당하는 내담자가 없습니다.
+      </div>`;
+    if (isDirect) setSelectedCountLabels(selectedForPrint.size);
+    updatePrintButtonState();
+    return;
+  }
+
+  container.classList.remove("is-empty");
+  container.innerHTML = displayItems
+    .map((p) => {
+      const checked = selectedForPrint.has(p.id);
+      const lastDateStr = p.lastDate
+        ? `${p.lastDate.getMonth() + 1}/${p.lastDate.getDate()}`
+        : "이번 달 내담 없음";
+      const statusBits = [];
+      if (p.noShowCount > 0) statusBits.push(`노쇼 ${p.noShowCount}회`);
+      if (p.sameDayCancelCount > 0)
+        statusBits.push(`당일취소 ${p.sameDayCancelCount}회`);
+      if (p.advanceCancelCount > 0)
+        statusBits.push(`사전취소 ${p.advanceCancelCount}회`);
+      if (p.pauseCount > 0) statusBits.push(`휴진 ${p.pauseCount}회`);
+      const statusHtml =
+        statusBits.length > 0
+          ? `<div class="person-status">${statusBits.join(" · ")}</div>`
+          : "";
+
+      if (!isDirect) {
+        return `
+        <div class="person-card person-card-readonly" id="card-${p.id}">
+          <div class="person-name">
+            ${escapeHtml(p.name)}
+            <div class="person-last-date">
+              마지막 내담일: ${escapeHtml(lastDateStr)}
+            </div>
+            ${statusHtml}
+          </div>
+          <div class="person-formula">${p.count}회</div>
+        </div>`;
+      }
+
+      const total = formatCurrency(p.price * p.count);
+      return `
+      <div class="person-card ${checked ? "" : "excluded"}" id="card-${p.id}">
+        <input type="checkbox" ${checked ? "checked" : ""}
+          data-action="toggle-calendar-person" data-id="${p.id}">
+        <div class="person-name">
+          ${escapeHtml(p.name)} 귀하
+          <div class="person-last-date">
+            마지막 내담일: ${escapeHtml(lastDateStr)}
+          </div>
+          ${statusHtml}
+        </div>
+        <div class="person-formula">${formatCurrency(p.price)} × ${p.count}회</div>
+        <div class="person-total">${total}</div>
+      </div>`;
+    })
+    .join("");
+
+  if (isDirect) setSelectedCountLabels(selectedForPrint.size);
+  updatePrintButtonState();
 }
 
 function updateCount() {
@@ -109,6 +249,19 @@ function updatePrintButtonState() {
   }
 }
 /* ── 데이터 테이블 ── */
+function renderGroupFilterTabs() {
+  const container = document.getElementById("groupFilterTabs");
+  if (!container) return;
+  const tabs = [{ value: "", label: "전체" }, ...CLIENT_GROUP_OPTIONS];
+  container.innerHTML = tabs
+    .map(
+      (t) =>
+        `<button class="group-tab ${clientGroupFilter === t.value ? "active" : ""}"
+          data-action="filter-client-group" data-group="${t.value}">${escapeHtml(t.label)}</button>`,
+    )
+    .join("");
+}
+
 function renderDataTable() {
   const tbody = document.getElementById("dataTableBody");
   const keyword = (document.getElementById("personSearch")?.value || "")
@@ -122,13 +275,14 @@ function renderDataTable() {
       : true;
     if (!nameMatch) return false;
     if (!keyword && p.deleted) return false;
+    if (clientGroupFilter && p.clientGroup !== clientGroupFilter) return false;
     return true;
   });
 
   if (rows.length === 0) {
     if (keyword) {
       tbody.innerHTML = `
-        <tr><td colspan="4" style="text-align:center;color:var(--on-surface-variant);padding:24px 32px 16px;">
+        <tr><td colspan="5" style="text-align:center;color:var(--on-surface-variant);padding:24px 32px 16px;">
           검색 결과가 없습니다.
           <br><br>
           <button class="btn btn-filled btn-primary btn-sm"
@@ -137,7 +291,7 @@ function renderDataTable() {
           </button>
         </td></tr>`;
     } else {
-      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--on-surface-variant);padding:32px;">등록된 인원이 없습니다</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--on-surface-variant);padding:32px;">등록된 인원이 없습니다</td></tr>`;
     }
     return;
   }
@@ -150,17 +304,21 @@ function renderDataTable() {
         ? +p.currentPrice
         : +p.price || 0;
       const yearlyVisits = getYearVisitCount(p, YEAR);
+      const groupLabel = CLIENT_GROUP_LABELS[p.clientGroup] || "—";
       const statusBadge = isDeleted
         ? `<span class="badge badge-muted">삭제됨</span>`
-        : active
-          ? `<span class="badge badge-active">활성</span>`
-          : `<span class="badge badge-inactive">비활성</span>`;
+        : p.status === "PAUSED"
+          ? `<span class="badge badge-paused">휴진</span>`
+          : active
+            ? `<span class="badge badge-active">활성</span>`
+            : `<span class="badge badge-inactive">비활성</span>`;
 
       if (isDeleted) {
         return `
         <tr data-id="${p.id}" style="opacity:0.45;">
           <td><s>${escapeHtml(p.name)}</s> <span style="font-size:11px;color:var(--on-surface-hint);">(삭제됨)</span></td>
-          <td>${formatCurrency(currentPrice)}</td>
+          <td>${escapeHtml(groupLabel)}</td>
+          <td>${isDirectBillingPerson(p) ? formatCurrency(currentPrice) : "—"}</td>
           <td>${yearlyVisits}회</td>
           <td>${statusBadge}</td>
         </tr>`;
@@ -174,7 +332,8 @@ function renderDataTable() {
             <svg class="icon table-name-indicator"><use href="icons.svg#icon-arrow-up-right"/></svg>
           </strong>
         </td>
-        <td>${formatCurrency(currentPrice)}</td>
+        <td>${escapeHtml(groupLabel)}</td>
+        <td>${isDirectBillingPerson(p) ? formatCurrency(currentPrice) : "—"}</td>
         <td>${yearlyVisits}회</td>
         <td>${statusBadge}</td>
       </tr>`;
@@ -205,7 +364,7 @@ function renderCalendarSelector(calendars) {
         .map(
           (cal, idx) => `
         <div class="cal-selector-item" data-action="select-calendar" data-idx="${idx}">
-          <div class="cal-color-dot" style="background:${escapeHtml(cal.backgroundColor || '#4285F4')};"></div>
+          <div class="cal-color-dot" style="background:${escapeHtml(cal.backgroundColor || "#4285F4")};"></div>
           <div class="cal-item-info">
             <div class="cal-item-name">${escapeHtml(cal.summary)}</div>
             <div class="cal-item-role">${escapeHtml(roleLabel[cal.accessRole] || cal.accessRole)}</div>
@@ -247,6 +406,9 @@ function renderCalendarGrid(events) {
   events.forEach((event) => {
     const summary = event.summary ? event.summary.trim() : "";
     if (!summary) return;
+    if (isExcludedEvent(summary, db.settings?.excludedEventKeywords || [])) {
+      return;
+    }
     const startTimeStr = event.start.dateTime || event.start.date;
     const eventDate = new Date(startTimeStr);
     if (
@@ -258,6 +420,10 @@ function renderCalendarGrid(events) {
     const day = eventDate.getDate();
     const parsed = parseCalendarSummary(summary);
     const dbPerson = db.data.find((p) => p.name === parsed.baseName);
+    const eventDateStr = getEventDateString(event);
+    const isPaused =
+      parsed.isPause ||
+      isDateInPausedPeriods(eventDateStr, dbPerson?.pausedPeriods);
     const isMatched = dbPerson && dbPerson.active !== false;
 
     const evtEl = document.createElement("div");
@@ -268,16 +434,17 @@ function renderCalendarGrid(events) {
     nameSpan.className = "calendar-event-name";
     nameSpan.textContent = parsed.baseName;
     evtEl.appendChild(nameSpan);
-    if (parsed.suffix) {
+    if (parsed.suffix || isPaused) {
       const badge = document.createElement("span");
-      const statusClass =
-        parsed.suffix === "노쇼"
+      const statusClass = isPaused
+        ? "paused"
+        : parsed.suffix === "노쇼"
           ? "no-show"
           : parsed.suffix === "당일취소"
             ? "same-day-cancel"
             : "advance-cancel";
       badge.className = `calendar-event-badge ${statusClass}`;
-      badge.textContent = parsed.suffix;
+      badge.textContent = isPaused ? "휴진" : parsed.suffix;
       evtEl.appendChild(badge);
     } else if (parsed.hasStatusIssue) {
       const badge = document.createElement("span");
@@ -315,11 +482,9 @@ function renderCalendarGrid(events) {
 
 /* ── 캘린더 목록 (청구 대상) ── */
 function renderCalendarList(displayItems, unmatched) {
-  const container = document.getElementById("peopleList");
   calendarDisplayItems = displayItems;
 
   // 매칭 건수 & 미매칭 버튼 업데이트
-  document.getElementById("matchedCount").textContent = displayItems.length;
   const unmatchedBtn = document.getElementById("btn-unmatched-summary");
   const invalidStatusBtn = document.getElementById(
     "btn-invalid-status-summary",
@@ -337,58 +502,7 @@ function renderCalendarList(displayItems, unmatched) {
   } else {
     invalidStatusBtn.style.display = "none";
   }
-
-  if (displayItems.length === 0) {
-    container.classList.add("is-empty");
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon"><svg class="icon"><use href="icons.svg#icon-user"/></svg></div>
-        캘린더와 DB에 매치되는 활성 인원이 없습니다.<br>
-        이름이 동일한지 확인해주세요.
-      </div>`;
-    setSelectedCountLabels(0);
-    updatePrintButtonState();
-    return;
-  }
-
-  container.classList.remove("is-empty");
-
-  container.innerHTML = displayItems
-    .map((p) => {
-      const total = formatCurrency(p.price * p.count);
-      const checked = selectedForPrint.has(p.id);
-      const lastDateStr = p.lastDate
-        ? `${p.lastDate.getMonth() + 1}/${p.lastDate.getDate()}`
-        : "이번 달 내담 없음";
-      const statusBits = [];
-      if (p.noShowCount > 0) statusBits.push(`노쇼 ${p.noShowCount}회`);
-      if (p.sameDayCancelCount > 0)
-        statusBits.push(`당일취소 ${p.sameDayCancelCount}회`);
-      if (p.advanceCancelCount > 0)
-        statusBits.push(`사전취소 ${p.advanceCancelCount}회`);
-      const statusHtml =
-        statusBits.length > 0
-          ? `<div class="person-status">${statusBits.join(" · ")}</div>`
-          : "";
-      return `
-      <div class="person-card ${checked ? "" : "excluded"}" id="card-${p.id}">
-        <input type="checkbox" ${checked ? "checked" : ""}
-          data-action="toggle-calendar-person" data-id="${p.id}">
-        <div class="person-name">
-          ${escapeHtml(p.name)} 귀하
-          <div class="person-last-date">
-            마지막 내담일: ${escapeHtml(lastDateStr)}
-          </div>
-          ${statusHtml}
-        </div>
-        <div class="person-formula">${formatCurrency(p.price)} × ${p.count}회</div>
-        <div class="person-total">${total}</div>
-      </div>`;
-    })
-    .join("");
-
-  setSelectedCountLabels(selectedForPrint.size);
-  updatePrintButtonState();
+  renderPeopleList();
 }
 
 /* ── 미매칭 모달 내용 ── */
@@ -426,7 +540,7 @@ function renderInvalidStatusModal() {
   container.innerHTML = invalidStatusItemsList
     .map(
       (item, idx) => `
-    <div class="unmatched-card">
+    <div class="unmatched-card invalid-status-card">
       <div class="unmatched-info">
         <strong>${escapeHtml(item.baseName)}</strong>
         <div class="invalid-status-raw">현재 상태: (${escapeHtml(item.invalidStatusRaw || "비어있음")})</div>
@@ -478,7 +592,7 @@ function renderPaymentHistory(year, month) {
       <thead>
         <tr>
           <th>이름</th>
-          <th>횟수 (총청구 | 방문/노쇼/사전취소/당일취소)</th>
+          <th>횟수 (총청구 | 방문/노쇼/사전취소/당일취소/휴진)</th>
           <th>마지막 상담일</th>
           <th>청구액</th>
           <th>납부일</th>
@@ -492,14 +606,19 @@ function renderPaymentHistory(year, month) {
             const billedCount = Number.isFinite(+e.billedCount)
               ? +e.billedCount
               : Number.isFinite(+e.count)
-              ? +e.count
+                ? +e.count
+                : 0;
+            const noShowCount = Number.isFinite(+e.noShowCount)
+              ? +e.noShowCount
               : 0;
-            const noShowCount = Number.isFinite(+e.noShowCount) ? +e.noShowCount : 0;
             const sameDayCancelCount = Number.isFinite(+e.sameDayCancelCount)
               ? +e.sameDayCancelCount
               : 0;
             const advanceCancelCount = Number.isFinite(+e.advanceCancelCount)
               ? +e.advanceCancelCount
+              : 0;
+            const pauseCount = Number.isFinite(+e.pauseCount)
+              ? +e.pauseCount
               : 0;
             const visitCount = Number.isFinite(+e.visitCount)
               ? +e.visitCount
@@ -518,7 +637,7 @@ function renderPaymentHistory(year, month) {
                 <div class="payment-count-breakdown">
                   <strong>${billedCount}회</strong>
                   <span class="payment-count-sep">|</span>
-                  ${visitCount}회 / ${noShowCount}회 / ${advanceCancelCount}회 / ${sameDayCancelCount}회
+                  ${visitCount}회 / ${noShowCount}회 / ${advanceCancelCount}회 / ${sameDayCancelCount}회 / ${pauseCount}회
                 </div>
               </td>
               <td>${lastDateStr}</td>
@@ -618,4 +737,115 @@ function renderHistory() {
       </div>`;
     })
     .join("");
+}
+
+/* ── 수동 발행 ── */
+function buildManualInvoiceClientOptions(selectedId) {
+  const options = db.data
+    .filter((p) => p.active !== false && !p.deleted)
+    .map((p) => {
+      const isSelected = String(p.id) === String(selectedId);
+      return `<option value="${p.id}"${isSelected ? " selected" : ""}>${escapeHtml(p.name)}</option>`;
+    })
+    .join("");
+  return `<option value="">내담자 선택</option>${options}`;
+}
+
+function renderManualInvoiceRows() {
+  const tbody = document.getElementById("manualInvoiceRows");
+  if (!tbody) return;
+
+  if (manualInvoiceRows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="manual-invoice-empty-row">청구인원을 추가해주세요.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = manualInvoiceRows
+    .map(
+      (row) => `
+      <tr data-row-id="${row.rowId}">
+        <td>
+          <select class="form-input" data-action="manual-invoice-field" data-field="clientId" data-row-id="${row.rowId}">
+            ${buildManualInvoiceClientOptions(row.clientId)}
+          </select>
+        </td>
+        <td>
+          <input type="number" min="0" class="form-input manual-invoice-count-input"
+            data-action="manual-invoice-field" data-field="count" data-row-id="${row.rowId}"
+            value="${row.count ?? ""}" />
+        </td>
+        <td>
+          <input type="number" min="0" class="form-input manual-invoice-price-input"
+            data-action="manual-invoice-field" data-field="price" data-row-id="${row.rowId}"
+            value="${row.price ?? ""}" />
+        </td>
+        <td>
+          <span class="manual-invoice-day-field">
+            <input type="number" min="1" max="31" class="form-input manual-invoice-day-input"
+              data-action="manual-invoice-field" data-field="lastDate" data-row-id="${row.rowId}"
+              value="${row.lastDate || ""}" /><span class="manual-invoice-day-label">일</span>
+          </span>
+        </td>
+        <td>
+          <button class="btn btn-outlined btn-error btn-sm" data-action="manual-invoice-remove-row" data-row-id="${row.rowId}">
+            <svg class="icon"><use href="icons.svg#icon-delete"/></svg>
+          </button>
+        </td>
+      </tr>`,
+    )
+    .join("");
+}
+
+function readManualInvoiceYearMonth() {
+  const monthInput = document.getElementById("manualInvoiceMonth");
+  const [yearStr, monthStr] = (monthInput?.value || "").split("-");
+  return { year: Number(yearStr) || YEAR, month: Number(monthStr) || MONTH };
+}
+
+function buildManualInvoiceDateStr(year, month, day) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function renderManualInvoicePreview() {
+  const previewArea = document.getElementById("manualInvoicePreviewArea");
+  if (!previewArea) return;
+
+  const { year, month } = readManualInvoiceYearMonth();
+  const entries = manualInvoiceRows
+    .filter((row) => row.clientId && row.count && row.lastDate)
+    .map((row) => {
+      const client = db.data.find((p) => String(p.id) === String(row.clientId));
+      return {
+        name: client ? client.name : "",
+        price: Number(row.price) || 0,
+        count: Number(row.count) || 0,
+        lastDate: buildManualInvoiceDateStr(year, month, row.lastDate),
+      };
+    });
+
+  if (entries.length === 0) {
+    previewArea.innerHTML =
+      '<div class="invoice-preview-empty"> ⬅ 청구인원을 선택하고 회기, 마지막 상담일을 입력해주세요.</div>';
+    return;
+  }
+
+  previewArea.innerHTML = renderInvoices(entries, { year, month });
+}
+
+function renderManualInvoice() {
+  const monthInput = document.getElementById("manualInvoiceMonth");
+  if (monthInput && !monthInput.value) {
+    monthInput.value = `${YEAR}-${String(MONTH).padStart(2, "0")}`;
+  }
+  if (manualInvoiceRows.length === 0) {
+    manualInvoiceRows.push({
+      rowId: ++manualInvoiceRowSeq,
+      clientId: "",
+      count: "",
+      lastDate: "",
+      price: "",
+    });
+  }
+  renderManualInvoiceRows();
+  renderManualInvoicePreview();
 }
