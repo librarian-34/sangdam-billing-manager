@@ -819,6 +819,7 @@ function renderManualInvoicePreview() {
         name: client ? client.name : "",
         price: Number(row.price) || 0,
         count: Number(row.count) || 0,
+        firstDate: buildManualInvoiceDateStr(year, month, 1),
         lastDate: buildManualInvoiceDateStr(year, month, row.lastDate),
       };
     });

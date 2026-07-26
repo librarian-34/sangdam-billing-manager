@@ -1496,8 +1496,7 @@ function buildConsultDateMap(events) {
   return dateMap;
 }
 
-function formatConsultRange({ count, firstDate, lastDate }) {
-  const visitCount = Number.isFinite(+count) ? +count : 0;
+function formatConsultRange({ firstDate, lastDate }) {
   const first = parseDateLike(firstDate);
   const last = parseDateLike(lastDate);
   const start = first || last;
@@ -1506,7 +1505,7 @@ function formatConsultRange({ count, firstDate, lastDate }) {
   const formatMonthDay = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일`;
 
   if (!start) return "";
-  if (visitCount <= 1 || !end || start.getTime() === end.getTime()) {
+  if (!end || start.getTime() === end.getTime()) {
     return formatMonthDay(start);
   }
   return `${formatMonthDay(start)} ~ ${formatMonthDay(end)}`;
@@ -1788,6 +1787,7 @@ async function issueManualInvoice() {
       name: client ? client.name : "",
       price: Number(row.price) || 0,
       count: Number(row.count) || 0,
+      firstDate: buildManualInvoiceDateStr(year, month, 1),
       lastDate: buildManualInvoiceDateStr(year, month, row.lastDate),
     };
   });
@@ -1807,7 +1807,7 @@ async function issueManualInvoice() {
       price: e.price,
       count: e.count,
       total: e.price * e.count,
-      firstDate: null,
+      firstDate: e.firstDate,
       lastDate: e.lastDate,
     })),
   };
